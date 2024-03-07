@@ -14,9 +14,8 @@ Run diesel migration
 
 Add active policy (requires `sqlite3` client)
 - `sqlite3 ./data/policy.db`
-- \[OLD DONT USE ANYMORE\] `INSERT INTO policies VALUES(1,'Dit is een omschrijving','Dit is een versie omschrijving','Bas Kloosterman',1698255086939846,readfile('./lib/reasonerconn/examples/example-policy-content.json')); INSERT INTO active_version VALUES(1,'2023-10-31 20:14:39.669660','Bas Kloosterman');`
 - ```
-  INSERT INTO policies VALUES(1,'Dit is een omschrijving','Dit is een versie omschrijving','Bas Kloosterman',1698255086939846,'[{"reasoner":"eflint","reasoner_version":"0.1.0","content":[]}]');
+  INSERT INTO policies VALUES(1,'Dit is een omschrijving','Dit is een versie omschrijving','Bas Kloosterman',1698255086939846,'content','[{"reasoner":"eflint","reasoner_version":"0.1.0","content":[]}]');
   INSERT INTO active_version VALUES(1,'2023-10-31 20:14:39.669660','Bas Kloosterman');
   ```
 - Ctrl+D
