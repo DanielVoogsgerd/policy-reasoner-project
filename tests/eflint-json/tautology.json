@@ -1,0 +1,12 @@
+{
+    "version": "0.1.0",
+    "kind": "phrases",
+    "phrases": [
+        {
+            "kind": "predicate",
+            "is_invariant": true,
+            "name": "tautology",
+            "expression": true
+        }
+    ]
+}

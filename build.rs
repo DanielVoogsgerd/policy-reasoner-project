@@ -4,7 +4,7 @@
 //  Created:
 //    13 Dec 2023, 11:45:11
 //  Last edited:
-//    15 Dec 2023, 14:43:14
+//    12 Mar 2024, 13:53:16
 //  Auto updated?
 //    Yes
 //
@@ -15,51 +15,16 @@
 //
 
 use std::env::VarError;
-use std::fmt::{Display, Formatter, Result as FResult};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::{env, error};
+use std::{env, fs};
 
+use diesel::{Connection as _, SqliteConnection};
+use diesel_migrations::{FileBasedMigrations, MigrationHarness};
 use eflint_to_json::compile;
-use error_trace::ErrorTrace as _;
+use error_trace::trace;
 use sha2::{Digest as _, Sha256};
-
-
-/***** ERRORS *****/
-/// Defines errors originating from the buildscript
-#[derive(Debug)]
-enum Error {
-    /// Failed to get some environment variable.
-    EnvRetrieve { name: &'static str, err: std::env::VarError },
-    /// Failed to compile the input
-    InputCompile { path: PathBuf, err: eflint_to_json::Error },
-    /// Failed to create the output file
-    OutputCreate { path: PathBuf, err: std::io::Error },
-}
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use Error::*;
-        match self {
-            EnvRetrieve { name, .. } => write!(f, "Failed to get environment variable '{name}'"),
-            InputCompile { path, .. } => write!(f, "Failed to compile input file '{}'", path.display()),
-            OutputCreate { path, .. } => write!(f, "Failed to create output file '{}'", path.display()),
-        }
-    }
-}
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        use Error::*;
-        match self {
-            EnvRetrieve { err, .. } => Some(err),
-            InputCompile { err, .. } => Some(err),
-            OutputCreate { err, .. } => Some(err),
-        }
-    }
-}
-
-
-
 
 
 /***** HELPERS *****/
@@ -102,8 +67,9 @@ impl<W: Write> Write for HashWriter<W> {
 
 
 
-/***** ENTRYPOINT *****/
-fn main() {
+/***** TASKS *****/
+/// Compile & embed the eFLINT base definitions.
+fn compile_eflint() {
     // Read some environment variables
     let src_dir: PathBuf = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let eflint_to_json_exe: Option<PathBuf> = match env::var("EFLINT_TO_JSON_PATH") {
@@ -112,7 +78,7 @@ fn main() {
             if path.is_relative() { Some(src_dir.join(path)) } else { Some(path) }
         },
         Err(VarError::NotPresent) => None,
-        Err(err) => panic!("{}", Error::EnvRetrieve { name: "EFLINT_TO_JSON_PATH", err }.trace()),
+        Err(err) => panic!("{}", trace!(("Failed to get environment variable 'EFLINT_TO_JSON_PATH'"), err)),
     };
 
     // Mark the input files as source-dependent
@@ -128,13 +94,13 @@ fn main() {
     // Alright attempt to open the output file
     let handle: File = match File::create(&output_file) {
         Ok(handle) => handle,
-        Err(err) => panic!("{}", Error::OutputCreate { path: output_file, err }.trace()),
+        Err(err) => panic!("{}", trace!(("Failed to create output file '{}'", output_file.display()), err)),
     };
     let mut handle: HashWriter<File> = HashWriter::new(handle);
 
     // Alright run the compiler, after which we reset the handle
     if let Err(err) = compile(&main_path, &mut handle, eflint_to_json_exe.as_ref().map(|p| p.as_path())) {
-        panic!("{}", Error::InputCompile { path: main_path, err }.trace());
+        panic!("{}", trace!(("Failed to compile input file '{}'", main_path.display()), err));
     }
 
     // Also set the found hash
@@ -142,4 +108,56 @@ fn main() {
     println!("cargo:rustc-env=BASE_DEFS_EFLINT_JSON_HASH={hash}");
 
     // Done
+}
+
+
+
+/// Runs the Diesel migrations for the database.
+fn build_database() {
+    // Setup the triggers for running this script
+    let src_dir: PathBuf = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    println!("cargo:rerun-if-changed={}", src_dir.join("migrations").display());
+
+    // See if the output file already exists
+    let data_dir: PathBuf = src_dir.join("data");
+    let data_file: PathBuf = data_dir.join("policy.db");
+    if !data_file.exists() {
+        // Touch the database file
+        if !data_dir.exists() {
+            if let Err(err) = fs::create_dir(&data_dir) {
+                panic!("{}", trace!(("Failed to create data directory '{}'", data_dir.display()), err));
+            }
+        }
+        if let Err(err) = fs::File::create(&data_file) {
+            panic!("{}", trace!(("Failed to create policy database file '{}'", data_file.display()), err));
+        }
+
+        // Get the migrations defined
+        let migrations: FileBasedMigrations = match FileBasedMigrations::find_migrations_directory_in_path(&src_dir) {
+            Ok(migrations) => migrations,
+            Err(err) => panic!("{}", trace!(("Failed to find migration in source directory '{}'", src_dir.display()), err)),
+        };
+
+        // Apply them by connecting to the database
+        let mut conn: SqliteConnection = match SqliteConnection::establish(&data_file.display().to_string()) {
+            Ok(conn) => conn,
+            Err(err) => panic!("{}", trace!(("Failed to connect to database file '{}'", data_file.display()), err)),
+        };
+        if let Err(err) = conn.run_pending_migrations(migrations) {
+            panic!("Failed to apply migrations to database '{}': {}", data_file.display(), err);
+        }
+    }
+}
+
+
+
+
+
+/***** ENTRYPOINT *****/
+fn main() {
+    // 1. Compile the eFLINT base spec
+    compile_eflint();
+
+    // 2. Build the database
+    build_database();
 }

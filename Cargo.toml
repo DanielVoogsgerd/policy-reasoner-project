@@ -46,6 +46,9 @@ uuid = { version = "1.7", features = ["serde", "v4"], optional = true }
 
 [build-dependencies]
 base16ct = { version = "0.2", features = ["alloc"] }
+diesel = { version = "2.1", default-features = false, features = ["sqlite"] }
+diesel_migrations = "2.1"
+# download = { git = "https://github.com/Lut99/download-rs", default-features = false, features = ["download", "tar"] }
 eflint-to-json = { path = "./lib/eflint-to-json" }
 error-trace = { git = "https://github.com/Lut99/error-trace-rs" }
 sha2 = "0.10"
@@ -71,5 +74,6 @@ members = [
     "lib/nested-cli-parser",
 
     "tools/checker-client",
+    "tools/key-manager",
     "tools/policy-builder",
 ]

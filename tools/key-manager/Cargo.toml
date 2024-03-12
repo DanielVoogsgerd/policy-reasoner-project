@@ -1,0 +1,17 @@
+[package]
+name = "key-manager"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Bas Kloosterman", "Tim Müller" ]
+repository = "https://github.com/epi-project/policy-reasoner"
+description = "A tool that copies `branectl`s behaviour in making it easy to generates key/tokens."
+
+
+[dependencies]
+brane-ctl = { git = "https://github.com/epi-project/brane", branch = "develop" }
+clap = { version = "4.5", features = ["derive"] }
+error-trace = { git = "https://github.com/Lut99/error-trace-rs" }
+humanlog = { git = "https://github.com/Lut99/humanlog-rs" }
+humantime = "2.1"
+log = "0.4"
+jsonwebtoken = "9.2"
