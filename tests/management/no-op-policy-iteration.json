@@ -1,0 +1,10 @@
+{
+  "description": "Policy tinng init",
+  "version_description": "An example policy that allows EVERYTHING",
+  "content": [{
+      "reasoner": "no-reasoner",
+      "reasoner_version": "0.1.0",
+      "content": {
+      }
+  }]
+}

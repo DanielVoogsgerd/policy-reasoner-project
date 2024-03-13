@@ -12,6 +12,7 @@
 //!   Implements the deliberation side of the [`Srv`].
 //
 
+use std::default;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FResult};
 use std::sync::Arc;
@@ -19,13 +20,14 @@ use std::sync::Arc;
 use audit_logger::{AuditLogger, SessionedConnectorAuditLogger};
 use auth_resolver::{AuthContext, AuthResolver};
 use brane_ast::SymTable;
+use chrono::DateTime;
 use deliberation::spec::{
     AccessDataRequest, DataAccessResponse, DeliberationAllowResponse, DeliberationDenyResponse, DeliberationResponse, ExecuteTaskRequest,
     TaskExecResponse, Verdict, WorkflowValidationRequest, WorkflowValidationResponse,
 };
 use error_trace::ErrorTrace as _;
 use log::{debug, error, info};
-use policy::{Policy, PolicyDataAccess, PolicyDataError};
+use policy::{Policy, PolicyDataAccess, PolicyDataError, PolicyVersion};
 use reasonerconn::ReasonerConnector;
 use serde::Serialize;
 use state_resolver::StateResolver;
@@ -48,6 +50,9 @@ use crate::Srv;
 ///
 /// # Errors
 /// This function may error (= reject the request) if no active policy was found or there was another error trying to retrieve it.
+
+
+//Right now, throws an error if there is no active policy iteration
 async fn get_active_policy<L: AuditLogger, P: PolicyDataAccess>(
     logger: &L,
     reference: &str,
@@ -57,12 +62,11 @@ async fn get_active_policy<L: AuditLogger, P: PolicyDataAccess>(
     match policystore.get_active().await {
         Ok(policy) => Ok(Ok(policy)),
         Err(PolicyDataError::NotFound) => {
-            debug!("Denying incoming request by default (no active policy found)");
-
+            //TODO: fix later
             // Create the verdict
             let verdict = Verdict::Deny(DeliberationDenyResponse {
                 shared: DeliberationResponse { verdict_reference: reference.into() },
-                reasons_for_denial: None,
+                reasons_for_denial: Some((vec!["No active policy found".to_string()])),
             });
 
             // Log it: first, the "actual response" with the reason and then the verdict returned to the user
@@ -173,6 +177,7 @@ where
         debug!("Generated verdict_reference: {}", verdict_reference);
 
         debug!("Retrieving active policy...");
+
         let policy: Policy = match get_active_policy(&this.logger, &verdict_reference, &this.policystore).await? {
             Ok(policy) => policy,
             Err(err) => return Ok(err),
@@ -399,7 +404,7 @@ where
             Err(err) => return Ok(err),
         };
         debug!("Got policy with {} bodies", policy.content.len());
-
+        debug!("Policy version: {:?}", policy.version.version);
         this.logger.log_validate_workflow_request(&verdict_reference, &auth_ctx, policy.version.version.unwrap(), &state, &workflow).await.map_err(
             |err| {
                 debug!("Could not log validate workflow request to audit log : {:?} | request id: {}", err, verdict_reference);

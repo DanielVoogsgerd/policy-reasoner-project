@@ -16,7 +16,6 @@ use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use state_resolver::State;
 use workflow::spec::Workflow;
 
-
 /***** HELPER MACROS *****/
 /// Shortcut for creating an eFLINT JSON Specification [`Phrase::Create`].
 ///
@@ -62,10 +61,6 @@ macro_rules! str_lit {
     };
 }
 
-
-
-
-
 /***** CONSTANTS *****/
 /// The identifier used for this connector backend.
 pub const EFLINT_JSON_ID: &'static str = "eflint-json";
@@ -75,10 +70,6 @@ pub const EFLINT_JSON_ID: &'static str = "eflint-json";
 const JSON_BASE_SPEC: &str = include_str!(env!("BASE_DEFS_EFLINT_JSON"));
 /// A hash of the entire base specification, precomputed by `build.rs`.
 const JSON_BASE_SPEC_HASH: &str = env!("BASE_DEFS_EFLINT_JSON_HASH");
-
-
-
-
 
 /***** ERRORS *****/
 /// Main error that originates from the [`EFlintReasonerConnector`].
@@ -131,10 +122,6 @@ impl error::Error for EFlintLeakPrefixErrorsError {
     }
 }
 
-
-
-
-
 /***** ERROR HANDLERS *****/
 pub trait EFlintErrorHandler {
     type Error: error::Error;
@@ -144,10 +131,14 @@ pub trait EFlintErrorHandler {
         Self: Sized;
 
     #[inline]
-    fn extract_errors(&self, _: Option<&PhraseResult>) -> Vec<String> { vec![] }
+    fn extract_errors(&self, _: Option<&PhraseResult>) -> Vec<String> {
+        vec![]
+    }
 
     #[inline]
-    fn nested_args() -> Vec<(char, &'static str, &'static str)> { vec![] }
+    fn nested_args() -> Vec<(char, &'static str, &'static str)> {
+        vec![]
+    }
 }
 
 pub struct EFlintLeakNoErrors;
@@ -207,9 +198,9 @@ impl EFlintErrorHandler for EFlintLeakPrefixErrors {
 
 /***** LIBRARY *****/
 pub struct EFlintReasonerConnector<T: EFlintErrorHandler> {
-    pub addr:    String,
+    pub addr: String,
     err_handler: T,
-    base_defs:   Vec<Phrase>,
+    base_defs: Vec<Phrase>,
 }
 
 impl<T: EFlintErrorHandler> EFlintReasonerConnector<T> {
@@ -396,6 +387,8 @@ impl<T: EFlintErrorHandler> EFlintReasonerConnector<T> {
         phrases
     }
 
+
+
     async fn process_phrases<L: ReasonerConnectorAuditLogger + Send + Sync>(
         &self,
         logger: SessionedConnectorAuditLogger<L>,
@@ -473,7 +466,6 @@ pub struct EFlintReasonerConnectorContext {
     pub base_defs_hash: String,
 }
 
-
 impl std::hash::Hash for EFlintReasonerConnectorContext {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.t.hash(state);
@@ -483,9 +475,13 @@ impl std::hash::Hash for EFlintReasonerConnectorContext {
 }
 
 impl ConnectorContext for EFlintReasonerConnectorContext {
-    fn r#type(&self) -> String { self.t.clone() }
+    fn r#type(&self) -> String {
+        self.t.clone()
+    }
 
-    fn version(&self) -> String { self.version.clone() }
+    fn version(&self) -> String {
+        self.version.clone()
+    }
 }
 
 impl<T: EFlintErrorHandler> ConnectorWithContext for EFlintReasonerConnector<T> {
@@ -503,6 +499,7 @@ impl<T: EFlintErrorHandler> ConnectorWithContext for EFlintReasonerConnector<T> 
         }
     }
 }
+
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static, T: EFlintErrorHandler + Send + Sync + 'static> ReasonerConnector<L>
     for EFlintReasonerConnector<T>

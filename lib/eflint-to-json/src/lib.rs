@@ -37,10 +37,9 @@ use crate::download::{download_file, download_file_async, DownloadSecurity};
 
 /***** CONSTANTS *****/
 /// Compiler download URL.
-const COMPILER_URL: &str = "https://github.com/Olaf-Erkemeij/eflint-server/raw/bd3997df89441f13cbc82bd114223646df41540d/eflint-to-json";
+const COMPILER_URL: &str = "https://github.com/Noorts/experimental-public/raw/main/brane/eflint-to-json-arm64";
 /// Compiler download checksum.
-const COMPILER_CHECKSUM: [u8; 32] = hex_literal::hex!("4e4e59b158ca31e532ec0a22079951788696ffa5d020b36790b4461dbadec83d");
-
+const COMPILER_CHECKSUM: [u8; 32] = hex_literal::hex!("6ee342dcef6e2d3c2b67e97cf8c9defb0568be114fcb8b84e845b6b14066a6ae");
 
 
 

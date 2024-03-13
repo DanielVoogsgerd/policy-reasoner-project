@@ -104,7 +104,7 @@ Authorization: Bearer <token>
 
 With the keys set, you can access the following endpoints:
 - Deliberation API
-  - `POST v1/deliberation/execute-workflow`: Ask if the reasoner would be OK with participating in the given workflow.  
+  - `POST v1/deliberation/execute-workflow`: Ask if the reasoner would be OK with participating in the given workflow.
     - As a body, a JSON object should be given with:
       - `use_case`: A string that defines the use-case for which this request is done for. Currently only relevant when using the `BraneApiStateResolver` to choose which central registry to ask for state.
       - `workflow`: A nested JSON Object that represents Brane's [WIR](https://wiki.enablingpersonalizedinterventions.nl/specification/spec/wir/introduction.html) (i.e., the input workflow).
@@ -112,7 +112,7 @@ With the keys set, you can access the following endpoints:
       - `verdict`: The verdict of the checker, which is either a JSON string `"allow"` or a JSON string `"deny"`.
       - `verdict_reference`: A JSON String with a UUID that can be traced back in the logs to explain the verdict.
       - `signature`: A JSON string that carries the checker's signature (unimplemented, currently dummy implementation).
-  - `POST v1/deliberation/execute-task`: Ask if the reasoner would be OK with executing a particular task in the given workflow.  
+  - `POST v1/deliberation/execute-task`: Ask if the reasoner would be OK with executing a particular task in the given workflow.
     - As a body, a JSON object should be given with:
       - `use_case`: A string that defines the use-case for which this request is done for. Currently only relevant when using the `BraneApiStateResolver` to choose which central registry to ask for state.
       - `workflow`: A nested JSON Object that represents Brane's [WIR](https://wiki.enablingpersonalizedinterventions.nl/specification/spec/wir/introduction.html) (i.e., the input workflow).
@@ -121,11 +121,11 @@ With the keys set, you can access the following endpoints:
       - `verdict`: The verdict of the checker, which is either a JSON string `"allow"` or a JSON string `"deny"`.
       - `verdict_reference`: A JSON String with a UUID that can be traced back in the logs to explain the verdict.
       - `signature`: A JSON string that carries the checker's signature (unimplemented, currently dummy implementation).
-  - `POST v1/deliberation/access-data`: Ask if the reasoner would be OK with transferring a particular dataset to be used as input to the given task in the given workflow OR as result of the given workflow.  
+  - `POST v1/deliberation/access-data`: Ask if the reasoner would be OK with transferring a particular dataset to be used as input to the given task in the given workflow OR as result of the given workflow.
     - As a body, a JSON object should be given with:
       - `use_case`: A string that defines the use-case for which this request is done for. Currently only relevant when using the `BraneApiStateResolver` to choose which central registry to ask for state.
       - `workflow`: A nested JSON Object that represents Brane's [WIR](https://wiki.enablingpersonalizedinterventions.nl/specification/spec/wir/introduction.html) (i.e., the input workflow).
-      - `task_id`: An _optional_ identifier of the task that is asked about. Given as an array of two elements, with either `<main>` or the function ID of a specific function as first element, and the edge index within that function as second element (see the [WIR](https://wiki.enablingpersonalizedinterventions.nl/specification/spec/wir/introduction.html) for more information).  
+      - `task_id`: An _optional_ identifier of the task that is asked about. Given as an array of two elements, with either `<main>` or the function ID of a specific function as first element, and the edge index within that function as second element (see the [WIR](https://wiki.enablingpersonalizedinterventions.nl/specification/spec/wir/introduction.html) for more information).
         If this identifier is omitted, it means that instead this workflow returns a result to the user submitting it and we're asking if that transfer would be OK.
       - `data_id`: The ID of the dataset/intermediate result that we're asking about.
     - The response is a JSON object with:
@@ -156,11 +156,11 @@ With the keys set, you can access the following endpoints:
   - `GET v1/management/policies/active`: Get the ID of the currently active policy.
     - No body is required for this request.
     - A JSON Object is returned that contains the requested policy. The fields are indentical as returned by `POST v1/management/policies`.
-  - `PUT v1/management/policies/active`: Update the currently active policy.  
+  - `PUT v1/management/policies/active`: Update the currently active policy.
     - The body of this request should be a JSON Object with:
       - `version`: A JSON integer that is the ID of the policy to set active.
     - A JSON Object is returned that contains the policy to which the reasoner has switched. The fields are indentical as returned by `POST v1/management/policies`.
-  - `DELETE v1/management/policies/active`: De-active the currently active policy, reverting to "deny all" policy.  
+  - `DELETE v1/management/policies/active`: De-active the currently active policy, reverting to "deny all" policy.
     - No body is required for this request.
     - No result is returned by this request.
 
@@ -178,11 +178,11 @@ curl -X POST -H "Authorization: Bearer $JWT_DELIB" -H "Content-Type: application
 
 ```bash
 # Push a new policy!
-curl -X POST -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d "@tests/management/add-tautology.json" localhost:3030/v1/management/policies
+curl -X POST -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d "@tests/management/no-op-policy-iteration.json" localhost:3030/v1/management/policies
 ```
 
 ```bash
-# Make a policy active!
+# Make a policy active! Note: Version  updates w/ added policies
 curl -X PUT -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d '{ "version": 1 }' localhost:3030/v1/management/policies/active
 ```
 
