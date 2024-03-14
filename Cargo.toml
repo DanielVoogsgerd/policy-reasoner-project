@@ -52,6 +52,7 @@ diesel_migrations = "2.1"
 eflint-to-json = { path = "./lib/eflint-to-json" }
 error-trace = { git = "https://github.com/Lut99/error-trace-rs" }
 sha2 = "0.10"
+dotenvy = "0.15.7"
 
 
 [features]

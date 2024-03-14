@@ -155,6 +155,7 @@ fn build_database() {
 
 /***** ENTRYPOINT *****/
 fn main() {
+    let _ = dotenvy::dotenv().is_ok();
     // 1. Compile the eFLINT base spec
     compile_eflint();
 

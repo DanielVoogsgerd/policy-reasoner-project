@@ -89,6 +89,7 @@ By default, the former downloads the precpompiled Linux x86/64 binary from the [
 EFLINT_TO_JSON_PATH="<path/to/eflint-server-go>/cmd/eflint-to-json/eflint-to-json" cargo run --release
 ```
 
+This environment variable can also be placed into a dotenv file named `.env`.
 
 ## Usage
 > The [Policy Reasoner GUI](https://github.com/epi-project/policy-reasoner-gui) provides an alternative interface to the Policy Reasoner. You can consult that repository for more information on using it.

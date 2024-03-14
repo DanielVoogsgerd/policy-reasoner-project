@@ -2477,6 +2477,7 @@ dependencies = [
  "deliberation 0.1.0",
  "diesel",
  "diesel_migrations",
+ "dotenvy",
  "eflint-json",
  "eflint-to-json 0.1.0",
  "enum-debug",
