@@ -1,17 +1,14 @@
-use std::collections::HashMap;
+
 use std::error;
-use std::fmt::{Display, Formatter, Result as FResult};
+
 
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
-use eflint_json::spec::auxillary::Version;
-use eflint_json::spec::{
-    ConstructorInput, Expression, ExpressionConstructorApp, ExpressionPrimitive, Phrase, PhraseCreate, PhraseResult, Request, RequestCommon,
-    RequestPhrases,
-};
-use log::{debug, error, info};
+
+
+use log::{debug, info};
 use nested_cli_parser::map_parser::MapParser;
 use nested_cli_parser::{NestedCliParser as _, NestedCliParserHelpFormatter};
-use policy::{Policy, PolicyContent};
+use policy::{Policy};
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use state_resolver::State;
 use workflow::spec::Workflow;
@@ -19,7 +16,7 @@ use workflow::spec::Workflow;
 pub struct NoOpReasonerConnector;
 
 impl NoOpReasonerConnector {
-  pub fn new(cli_args: String) -> Result<Self, Box<dyn error::Error>> {
+  pub fn new(_cli_args: String) -> Result<Self, Box<dyn error::Error>> {
       info!("Creating new NoOpReasonerConnector with {} plugin", std::any::type_name::<Self>());
 
       debug!("Parsing nested arguments for NoOpReasonerConnector<{}>", std::any::type_name::<Self>());
@@ -45,23 +42,23 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
 {
     async fn execute_task(
         &self,
-        logger: SessionedConnectorAuditLogger<L>,
-        policy: Policy,
-        state: State,
-        workflow: Workflow,
-        task: String,
+        _logger: SessionedConnectorAuditLogger<L>,
+        _policy: Policy,
+        _state: State,
+        _workflow: Workflow,
+        _task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         return Ok(ReasonerResponse::new(true, vec![]));
     }
 
     async fn access_data_request(
         &self,
-        logger: SessionedConnectorAuditLogger<L>,
-        policy: Policy,
-        state: State,
-        workflow: Workflow,
-        data: String,
-        task: Option<String>,
+        _logger: SessionedConnectorAuditLogger<L>,
+        _policy: Policy,
+        _state: State,
+        _workflow: Workflow,
+        _data: String,
+        _task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         return Ok(ReasonerResponse::new(true, vec![]));
     }
@@ -69,9 +66,9 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
 
     async fn workflow_validation_request(
         &self,
-        logger: SessionedConnectorAuditLogger<L>,
-        policy: Policy,
-        state: State,
+        _logger: SessionedConnectorAuditLogger<L>,
+        _policy: Policy,
+        _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         debug!("NoOpReasonerConnector: Workflow validation request received");
