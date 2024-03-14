@@ -12,7 +12,6 @@
 //!   Implements the deliberation side of the [`Srv`].
 //
 
-use std::default;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FResult};
 use std::sync::Arc;
@@ -20,14 +19,13 @@ use std::sync::Arc;
 use audit_logger::{AuditLogger, SessionedConnectorAuditLogger};
 use auth_resolver::{AuthContext, AuthResolver};
 use brane_ast::SymTable;
-use chrono::DateTime;
 use deliberation::spec::{
     AccessDataRequest, DataAccessResponse, DeliberationAllowResponse, DeliberationDenyResponse, DeliberationResponse, ExecuteTaskRequest,
     TaskExecResponse, Verdict, WorkflowValidationRequest, WorkflowValidationResponse,
 };
 use error_trace::ErrorTrace as _;
 use log::{debug, error, info};
-use policy::{Policy, PolicyDataAccess, PolicyDataError, PolicyVersion};
+use policy::{Policy, PolicyDataAccess, PolicyDataError};
 use reasonerconn::ReasonerConnector;
 use serde::Serialize;
 use state_resolver::StateResolver;

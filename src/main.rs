@@ -24,17 +24,10 @@ use reasonerconn::ReasonerConnector;
 use srv::Srv;
 
 use crate::auth::{JwtConfig, JwtResolver, KidResolver};
-use crate::eflint::EFlintErrorHandler;
-#[cfg(not(feature = "leak-public-errors"))]
-use crate::eflint::EFlintLeakNoErrors;
-#[cfg(feature = "leak-public-errors")]
-use crate::eflint::EFlintLeakPrefixErrors;
-use crate::eflint::EFlintReasonerConnector;
 use crate::logger::FileLogger;
 use crate::sqlite::SqlitePolicyDataStore;
 
 pub mod auth;
-pub mod eflint;
 pub mod logger;
 pub mod models;
 pub mod schema;
@@ -106,12 +99,6 @@ type DeliberationAuthResolverPlugin = JwtResolver<KidResolver>;
 /// The plugin used to interact with the policy store.
 type PolicyStorePlugin = SqlitePolicyDataStore;
 
-/// The plugin used to interact with the backend reasoner.
-#[cfg(feature = "leak-public-errors")]
-type EflintReasonerConnectorPlugin = EFlintReasonerConnector<EFlintLeakPrefixErrors>;
-#[cfg(not(feature = "leak-public-errors"))]
-type EflintReasonerConnectorPlugin = EFlintReasonerConnector<EFlintLeakNoErrors>;
-
 // TODO: Might need to support cfg.
 type PosixReasonerConnectorPlugin = posix::PosixReasonerConnector;
 
@@ -129,7 +116,7 @@ async fn main() {
     // Parse arguments
     let args: Arguments = Arguments::parse();
 
-    let rconn = match NoOpReasonerConnectorPlugin::new(args.clone().reasoner_connector.unwrap_or_else(String::new)) {
+    let rconn = match PosixReasonerConnectorPlugin::new(args.clone().reasoner_connector.unwrap_or_else(String::new)) {
         Ok(rconn) => rconn,
         Err(err) => {
             error!("{}", err);

@@ -465,7 +465,7 @@ version = "3.0.0"
 source = "git+https://github.com/epi-project/brane?branch=develop#ccebb81369fa3a5887bea2ca6075f29ab9fa7dfd"
 dependencies = [
  "brane-dsl",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "console",
  "enum-debug",
  "im",
@@ -475,7 +475,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json_any_key",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "strum 0.25.0",
  "uuid",
 ]
@@ -486,14 +486,14 @@ version = "3.0.0"
 source = "git+https://github.com/epi-project/brane?branch=develop#ccebb81369fa3a5887bea2ca6075f29ab9fa7dfd"
 dependencies = [
  "async-trait",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "enum-debug",
  "log",
  "rustls",
  "rustls-pemfile",
  "serde",
  "serde_yaml 0.9.32",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "tokio",
  "x509-parser",
 ]
@@ -506,7 +506,7 @@ dependencies = [
  "base64ct",
  "bollard",
  "brane-cfg",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "brane-tsk",
  "clap 4.5.2",
  "console",
@@ -534,7 +534,7 @@ dependencies = [
  "serde_json",
  "serde_yaml 0.9.32",
  "shlex",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "srv 0.1.0 (git+https://github.com/epi-project/policy-reasoner)",
  "tempfile",
  "tokio",
@@ -545,7 +545,7 @@ name = "brane-dsl"
 version = "3.0.0"
 source = "git+https://github.com/epi-project/brane?branch=develop#ccebb81369fa3a5887bea2ca6075f29ab9fa7dfd"
 dependencies = [
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "bytes",
  "enum-debug",
  "itertools 0.10.5",
@@ -557,7 +557,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "thiserror",
 ]
 
@@ -570,7 +570,7 @@ dependencies = [
  "async-trait",
  "base64 0.13.1",
  "brane-ast",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "console",
  "enum-debug",
  "futures",
@@ -579,9 +579,36 @@ dependencies = [
  "num-traits",
  "serde",
  "serde_json",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "brane-shr"
+version = "3.0.0"
+dependencies = [
+ "async-compression",
+ "console",
+ "dialoguer 0.10.4",
+ "enum-debug",
+ "fs2",
+ "futures-util",
+ "hex",
+ "humanlog",
+ "indicatif",
+ "log",
+ "num-derive",
+ "num-traits",
+ "rdkafka",
+ "regex",
+ "reqwest",
+ "sha2",
+ "specifications 3.0.0",
+ "tokio",
+ "tokio-stream",
+ "tokio-tar",
+ "url",
 ]
 
 [[package]]
@@ -605,7 +632,7 @@ dependencies = [
  "regex",
  "reqwest",
  "sha2",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "tokio",
  "tokio-stream",
  "tokio-tar",
@@ -624,7 +651,7 @@ dependencies = [
  "brane-ast",
  "brane-cfg",
  "brane-exe",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "chrono",
  "console",
  "dialoguer 0.11.0",
@@ -644,7 +671,7 @@ dependencies = [
  "serde_json",
  "serde_yaml 0.9.32",
  "sha2",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "tokio",
  "tokio-tar",
  "tokio-util",
@@ -694,7 +721,7 @@ version = "0.1.0"
 dependencies = [
  "audit-logger 0.1.0",
  "brane-ast",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "chrono",
  "clap 4.5.2",
  "console",
@@ -713,7 +740,7 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sha2",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "srv 0.1.0",
 ]
 
@@ -2472,6 +2499,7 @@ dependencies = [
  "base16ct",
  "base64ct",
  "brane-cfg",
+ "brane-shr 3.0.0",
  "chrono",
  "clap 4.5.2",
  "deliberation 0.1.0",
@@ -2492,9 +2520,9 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "serde_yaml 0.8.26",
+ "serde_yaml 0.9.32",
  "sha2",
- "specifications",
+ "specifications 3.0.0",
  "srv 0.1.0",
  "state-resolver 0.1.0",
  "tokio",
@@ -3288,6 +3316,38 @@ checksum = "05ffd9c0a93b7543e062e759284fcf5f5e3b098501104bfbdde4d404db792871"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "specifications"
+version = "3.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "base64ct",
+ "chrono",
+ "const_format",
+ "enum-debug",
+ "futures",
+ "jsonwebtoken",
+ "log",
+ "num-traits",
+ "parking_lot",
+ "prost",
+ "prost-types",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "serde_test",
+ "serde_with 3.7.0",
+ "serde_yaml 0.9.32",
+ "strum 0.24.1",
+ "strum_macros 0.24.3",
+ "tonic",
+ "uuid",
 ]
 
 [[package]]
@@ -4392,7 +4452,7 @@ version = "0.1.0"
 dependencies = [
  "brane-ast",
  "brane-exe",
- "brane-shr",
+ "brane-shr 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "clap 4.5.2",
  "eflint-json",
  "enum-debug",
@@ -4404,7 +4464,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "transform",
 ]
 
@@ -4421,7 +4481,7 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "serde",
- "specifications",
+ "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "transform",
 ]
 
