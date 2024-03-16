@@ -1,30 +1,15 @@
-use std::{
-    error,
-    fs::{read_to_string, DirEntry},
-    path::Path,
-};
+use std::error;
 
 use std::os::unix::fs::PermissionsExt;
 
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
-use log::{debug, info, trace};
+use log::{debug, info};
 use nested_cli_parser::map_parser::MapParser;
 use nested_cli_parser::NestedCliParserHelpFormatter;
 use policy::Policy;
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use state_resolver::State;
 use workflow::{spec::Workflow, Dataset, Elem};
-
-pub struct PosixPermission {
-    pub user: String,
-    pub group: String,
-    pub other: String,
-}
-
-pub struct PosixFile {
-    pub path: String,
-    pub permissions: PosixPermission,
-}
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {}
