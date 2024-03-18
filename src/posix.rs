@@ -182,6 +182,62 @@ fn get_test_policy() -> PosixPolicy {
     test_policy
 }
 
+fn satisfies_posix_permissions(mode_bits: u32, user_type: UserType, permissions: &Vec<PosixPermission>) -> Result<(), Vec<&PosixPermission>> {
+    let unsatisfied_permissions: Vec<&PosixPermission> = permissions.into_iter().filter(|&permission| {
+        (mode_bits & permission.to_numeric_notation(&user_type)) != permission.to_numeric_notation(&user_type)
+    }).collect();
+
+    return if unsatisfied_permissions.is_empty() { Ok(()) } else { Err(unsatisfied_permissions) }
+}
+
+fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, required_permissions: Vec<PosixPermission>, task_name: &Option<String>) -> bool {
+    // The datasets used in the workflow. E.g., "st_antonius_ect".
+    let datasets: Vec<Dataset> = find_datasets_in_workflow(&workflow, task_name);
+
+    // A data index, which contains dataset identifiers and their underlying files.
+    // E.g., the "st_antonius_ect" dataset contains the "text.txt" file. See: tests/data/*
+    let data_index = brane_shr::utilities::create_data_index_from("tests/data");
+
+    // Contains the file paths of the files that are used in the workflow. The dataset identifier is included as the
+    // first element in the returned tuples. E.g., if we use "st_antonius_ect" in the workflow, then `paths` includes:
+    // Vec[("st_antonius_ect", "tests/data/umc_utrecht_ect/./test.txt")]
+    let info_with_paths = datasets
+        .iter()
+        .map(|dataset| data_index.get(&dataset.name).expect("Could not find dataset in dataindex"))
+        .flat_map(|datainfo| {
+            datainfo.access.values().map(|kind| match kind {
+                specifications::data::AccessKind::File{ path} => (datainfo.name.clone(), path.clone()),
+            })
+        })
+        .collect::<Vec<_>>();
+    
+    // Given the file `paths`, check if the current process has the required permissions for each file. 
+    let is_allowed = info_with_paths.iter().map(|(dataset_identifier, path)| {
+        let permission_bits_on_file = std::fs::metadata(&path)
+            .expect("Could not get file metadata")
+            .permissions()
+            .mode();
+        return (path, satisfies_posix_permissions(
+            permission_bits_on_file,
+            UserType::from_string(&policy.get_local_name(dataset_identifier.clone(), workflow.user.name.clone())).unwrap(),
+            &required_permissions
+        ));
+    }).all(|(path, result)| match result {
+        Ok(_) => true,
+        Err(permission) => {
+            error!("The global user '{:}' does not have {:?} permissions(s) on {:?}", 
+                workflow.user.name.clone(), permission, path);
+            false
+        },
+    });
+    info!("We need to evaluate the permissions of the following files {:#?}", info_with_paths);
+
+    info!("Found: {} datasets", datasets.len());
+    for dataset in &datasets {
+        debug!("Dataset: {}", dataset.name);
+    }
+    is_allowed
+}
 
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<L> for PosixReasonerConnector {
@@ -190,9 +246,14 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _logger: SessionedConnectorAuditLogger<L>,
         _policy: Policy,
         _state: State,
-        _workflow: Workflow,
-        _task: String,
+        workflow: Workflow,
+        task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
+        let test_policy = get_test_policy();
+        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, vec!(PosixPermission::Execute), &Some(task));
+        if !is_allowed {
+            return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
+        }
         return Ok(ReasonerResponse::new(true, vec![]));
     }
 
@@ -201,12 +262,19 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _logger: SessionedConnectorAuditLogger<L>,
         _policy: Policy,
         _state: State,
-        _workflow: Workflow,
+        workflow: Workflow,
         _data: String,
-        _task: Option<String>,
+        task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
+        let test_policy = get_test_policy();
+        // TODO: `task` is optional. What are the semantics here?
+        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, vec!(PosixPermission::Read), &Some(task.unwrap()));
+        if !is_allowed {
+            return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
+        }
         return Ok(ReasonerResponse::new(true, vec![]));
     }
+
 
     async fn workflow_validation_request(
         &self,
@@ -215,36 +283,13 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        // The datasets used in the workflow. E.g., "st_antonius_ect".
-        let datasets = find_datasets_in_workflow(workflow);
-
-        // A data index, which contains dataset identifiers and their underlying files.
-        // E.g., the "st_antonius_ect" dataset contains the "text.txt" file. See: tests/data/*
-        let data_index = brane_shr::utilities::create_data_index_from("tests/data");
-
-        // Contains the file paths of the files that are used in the workflow. E.g., if we use "st_antonius_ect" in the
-        // workflow, then `paths` includes: "tests/data/umc_utrecht_ect/./test.txt"
-        let paths = datasets
-            .iter()
-            .map(|dataset| data_index.get(&dataset.name).expect("Could not find dataset in dataindex"))
-            .flat_map(|datainfo| {
-                datainfo.access.values().map(|kind| match kind {
-                    specifications::data::AccessKind::File { path } => path.clone(),
-                })
-            })
-            .collect::<Vec<_>>();
-
-        // Given the file `paths`, check if the current process has read permissions for each file.
-        let is_allowed =
-            paths.iter().map(|path| std::fs::metadata(path).expect("Could not get file metadata").permissions().mode()).all(|x| x & 004 == 004);
-
-        info!("We need to evaluate the permissions of the following files {:#?}", paths);
-
-        info!("Found: {} datasets", datasets.len());
-        for dataset in &datasets {
-            debug!("Dataset: {}", dataset.name);
-        }
-
+        let test_policy = get_test_policy();
+        info!("Local user name: {}", test_policy.get_local_name(String::from("umc_utrecht_ect"), String::from("test")));
+        info!("Workflow user name: {}", workflow.user.name);
+        
+        // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all
+        // datasets for now.
+        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, vec!(PosixPermission::Read, PosixPermission::Execute), &None);
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
