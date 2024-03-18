@@ -285,52 +285,54 @@ impl ConnectorWithContext for PosixReasonerConnector {
     }
 }
 
-fn find_datasets_in_workflow(workflow: Workflow) -> Vec<Dataset> {
+fn find_datasets_in_workflow(workflow: &Workflow, task_name: &Option<String>) -> Vec<Dataset> {
     let mut datasets: Vec<Dataset> = Vec::new();
     debug!("Walking the workflow in order to find datasets. Starting with {:?}", &workflow.start);
-    find_datasets(&workflow.start, &mut datasets);
+    find_datasets(&workflow.start, &mut datasets, task_name);
 
     datasets
 }
 
-fn find_datasets(elem: &Elem, datasets: &mut Vec<Dataset>) {
+fn find_datasets(elem: &Elem, datasets: &mut Vec<Dataset>, task_name: &Option<String>) {
     match elem {
         Elem::Task(task) => {
             debug!("Visiting task");
-            datasets.extend(task.input.iter().cloned());
-            if let Some(output) = &task.output {
-                datasets.push(output.clone());
+            if (task_name.is_some() && *task_name.as_ref().unwrap() == task.name) || !task_name.is_some() {
+                datasets.extend(task.input.iter().cloned());
+                if let Some(output) = &task.output {
+                    datasets.push(output.clone());
+                }
+                find_datasets(&task.next, datasets, task_name);
             }
-
-            find_datasets(&task.next, datasets);
         },
         Elem::Commit(commit) => {
             debug!("Visiting task");
             // TODO: Maybe we should handle `data_name`
-            datasets.extend(commit.input.iter().cloned());
-
-            find_datasets(&commit.next, datasets);
+            if !task_name.is_some() {
+                datasets.extend(commit.input.iter().cloned());
+            }
+            find_datasets(&commit.next, datasets, task_name);
         },
         Elem::Branch(branch) => {
             debug!("Visiting task");
             for elem in &branch.branches {
-                find_datasets(elem, datasets);
+                find_datasets(elem, datasets, task_name);
             }
 
-            find_datasets(&branch.next, datasets);
+            find_datasets(&branch.next, datasets, task_name);
         },
         Elem::Parallel(parallel) => {
             debug!("Visiting task");
             for elem in &parallel.branches {
-                find_datasets(elem, datasets);
+                find_datasets(elem, datasets, task_name);
             }
 
-            find_datasets(&parallel.next, datasets);
+            find_datasets(&parallel.next, datasets, task_name);
         },
         Elem::Loop(loope) => {
             debug!("Visiting task");
-            find_datasets(&loope.body, datasets);
-            find_datasets(&loope.next, datasets);
+            find_datasets(&loope.body, datasets, task_name);
+            find_datasets(&loope.next, datasets, task_name);
         },
         Elem::Next => {
             debug!("Visiting task");
