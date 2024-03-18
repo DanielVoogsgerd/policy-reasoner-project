@@ -134,6 +134,55 @@ impl PosixReasonerConnector {
     }
 }
 
+/// A simple test policy. TODO: Set up, parse and use the policy passed in via the framework.
+fn get_test_policy() -> PosixPolicy {
+    let raw_test_policy = String::from(
+        r#"
+        {
+            "datasets": [
+                {
+                    "name": "st_antonius_ect",
+                    "user_mappings": [
+                        {
+                            "global_username": "test",
+                            "local_username": "others"
+                        }, 
+                        {
+                            "global_username": "halli",
+                            "local_username": "others"
+                        }
+                    ]
+                },
+                {
+                    "name": "umc_utrecht_ect",
+                    "user_mappings": [
+                        {
+                            "global_username": "test",
+                            "local_username": "others"
+                        },
+                        {
+                            "global_username": "test2",
+                            "local_username": "others"
+                        }
+                    ]
+                }
+            ]
+        }
+        "#,
+    );
+
+    let raw_test_policy = PolicyContent {
+        reasoner: String::from("posix"),
+        reasoner_version: String::from("0.0.1"),
+        content: RawValue::from_string(raw_test_policy).unwrap(),
+    };
+    
+    // Note: IIUC for eFLINT there is a completely separate parser: https://gitlab.com/eflint/json-spec-rs.
+    let test_policy: PosixPolicy = serde_json::from_str(raw_test_policy.content.get()).unwrap();
+    test_policy
+}
+
+
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<L> for PosixReasonerConnector {
     async fn execute_task(
