@@ -3,16 +3,109 @@ use std::error;
 use std::os::unix::fs::PermissionsExt;
 
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
-use log::{debug, info};
+use log::{debug, info, error};
 use nested_cli_parser::map_parser::MapParser;
 use nested_cli_parser::NestedCliParserHelpFormatter;
-use policy::Policy;
+use policy::{Policy, PolicyContent};
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
+use serde::Deserialize;
+use serde_json::value::RawValue;
 use state_resolver::State;
 use workflow::{spec::Workflow, Dataset, Elem};
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PosixPolicy {
+    datasets: Vec<PosixPolicyDataset>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PosixPolicyDataset {
+    name: String,
+    user_mappings: Vec<PosixPolicyUserMapping>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PosixPolicyUserMapping {
+    global_username: String,
+    local_username: String,
+}
+
+impl PosixPolicy {
+    /// Given a dataset identifier (e.g., "umc_utrecht_ect") and a global username (e.g., "test"), returns the local
+    /// triad (file_owner, group, or others) that this combination maps to.
+    fn get_local_name(&self, dataset_identifier: String, global_username: String) -> String {
+        self.datasets
+            .iter()
+            .find(|&dataset| dataset.name == dataset_identifier)
+            .expect(&format!("the following dataset should be in the policy: {:}", &dataset_identifier))
+            .user_mappings
+            .iter()
+            .find(|&user_mapping| user_mapping.global_username == global_username)
+            .expect(&format!("the user mapping should contain a mapping for the following user: {:}", &global_username))
+            .local_username.clone()
+    }
+}
+
+// Unix permissions (see: https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation)
+// Symbolic     Numeric       English
+// ----------   0000          no permissions
+// -rwx------   0700          read, write, & execute only for owner
+// -rwxrwx---   0770          read, write, & execute for owner and group
+// -rwxrwxrwx   0777          read, write, & execute for owner, group and others
+// ---x--x--x   0111          execute
+// --w--w--w-   0222          write
+// --wx-wx-wx   0333          write & execute
+// -r--r--r--   0444          read
+// -r-xr-xr-x   0555          read & execute
+// -rw-rw-rw-   0666          read & write
+// -rwxr-----   0740          owner can read, write, & execute; group can only read; others have no permissions
+
+#[derive(Deserialize)]
+enum UserType {
+    FileOwner,
+    Group,
+    Others,
+}
+
+impl UserType {
+    fn from_string(user_type: &str) -> Result<Self, &'static str> {
+        match user_type {
+            "file_owner" => Ok(UserType::FileOwner),
+            "group" => Ok(UserType::Group),
+            "others" => Ok(UserType::Others),
+            _ => Err("The user type provided does not exist.")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PosixPermission {
+    Read,
+    Write,
+    Execute,
+}
+
+impl PosixPermission {
+    /// Called on a `PosixPermission` and passed a `user_type` will return the numeric notation that denotes being in
+    /// possession of this permission for this user_type/triad. E.g., `Read` for `file_owner` maps to `400`, `Execute`
+    /// for `others` maps to `001`.
+    fn to_numeric_notation(&self, user_type: &UserType) -> u32 {
+        let alignment_multiplier = match user_type {
+            UserType::FileOwner => 100, // .00
+            UserType::Group => 10,      // 0.0
+            UserType::Others => 1,      // 00.
+        };
+        match self {
+            PosixPermission::Read => 4 * alignment_multiplier,
+            PosixPermission::Write => 2 * alignment_multiplier,
+            PosixPermission::Execute => 1 * alignment_multiplier,
+        }
+    }
+}
 
 impl PosixReasonerConnector {
     pub fn new(_cli_args: String) -> Result<Self, Box<dyn error::Error>> {
