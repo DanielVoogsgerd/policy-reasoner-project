@@ -64,7 +64,7 @@ async fn get_active_policy<L: AuditLogger, P: PolicyDataAccess>(
             // Create the verdict
             let verdict = Verdict::Deny(DeliberationDenyResponse {
                 shared: DeliberationResponse { verdict_reference: reference.into() },
-                reasons_for_denial: Some((vec!["No active policy found".to_string()])),
+                reasons_for_denial: Some(vec!["No active policy found".to_string()]),
             });
 
             // Log it: first, the "actual response" with the reason and then the verdict returned to the user

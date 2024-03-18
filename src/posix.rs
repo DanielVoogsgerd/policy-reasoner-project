@@ -1,9 +1,11 @@
-use std::error;
+use std::path::Path;
+use std::{collections::HashMap, error};
 
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
-use log::{debug, info, error};
+use log::{debug, error, info};
 use nested_cli_parser::map_parser::MapParser;
 use nested_cli_parser::NestedCliParserHelpFormatter;
 use policy::{Policy, PolicyContent};
@@ -16,37 +18,27 @@ use workflow::{spec::Workflow, Dataset, Elem};
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {}
 
-
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
-    datasets: Vec<PosixPolicyDataset>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct PosixPolicyDataset {
-    name: String,
-    user_mappings: Vec<PosixPolicyUserMapping>,
+    dataset_user_mapping: HashMap<String, PosixPolicyUserMapping>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicyUserMapping {
-    global_username: String,
-    local_username: String,
+    user_mapping: HashMap<String, PosixUser>,
+}
+
+#[derive(Deserialize, Debug)]
+struct PosixUser {
+    uid: u32,
+    gids: Vec<u32>,
 }
 
 impl PosixPolicy {
     /// Given a dataset identifier (e.g., "umc_utrecht_ect") and a global username (e.g., "test"), returns the local
     /// triad (file_owner, group, or others) that this combination maps to.
-    fn get_local_name(&self, dataset_identifier: String, global_username: String) -> String {
-        self.datasets
-            .iter()
-            .find(|&dataset| dataset.name == dataset_identifier)
-            .expect(&format!("the following dataset should be in the policy: {:}", &dataset_identifier))
-            .user_mappings
-            .iter()
-            .find(|&user_mapping| user_mapping.global_username == global_username)
-            .expect(&format!("the user mapping should contain a mapping for the following user: {:}", &global_username))
-            .local_username.clone()
+    fn get_local_name(&self, dataset_identifier: &str, workflow_user: &str) -> Option<&PosixUser> {
+        self.dataset_user_mapping.get(dataset_identifier)?.user_mapping.get(workflow_user)
     }
 }
 
@@ -64,7 +56,7 @@ impl PosixPolicy {
 // -rw-rw-rw-   0666          read & write
 // -rwxr-----   0740          owner can read, write, & execute; group can only read; others have no permissions
 
-#[derive(Deserialize)]
+#[derive(Copy, Clone, Deserialize)]
 enum UserType {
     FileOwner,
     Group,
@@ -77,12 +69,12 @@ impl UserType {
             "file_owner" => Ok(UserType::FileOwner),
             "group" => Ok(UserType::Group),
             "others" => Ok(UserType::Others),
-            _ => Err("The user type provided does not exist.")
+            _ => Err("The user type provided does not exist."),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum PosixPermission {
     Read,
     Write,
@@ -90,20 +82,26 @@ enum PosixPermission {
 }
 
 impl PosixPermission {
+    fn to_mode_bit(&self) -> u32 {
+        match self {
+            PosixPermission::Read => 4,
+            PosixPermission::Write => 2,
+            PosixPermission::Execute => 1,
+        }
+    }
+}
+
+impl UserType {
     /// Called on a `PosixPermission` and passed a `user_type` will return the numeric notation that denotes being in
     /// possession of this permission for this user_type/triad. E.g., `Read` for `file_owner` maps to `400`, `Execute`
     /// for `others` maps to `001`.
-    fn to_numeric_notation(&self, user_type: &UserType) -> u32 {
-        let alignment_multiplier = match user_type {
-            UserType::FileOwner => 100, // .00
-            UserType::Group => 10,      // 0.0
-            UserType::Others => 1,      // 00.
+    fn get_mode_bitmask(&self, required_permissions: &[PosixPermission]) -> u32 {
+        let alignment_multiplier = match self {
+            UserType::FileOwner => 0o100,
+            UserType::Group => 0o10,
+            UserType::Others => 0o1,
         };
-        match self {
-            PosixPermission::Read => 4 * alignment_multiplier,
-            PosixPermission::Write => 2 * alignment_multiplier,
-            PosixPermission::Execute => 1 * alignment_multiplier,
-        }
+        required_permissions.iter().fold(0, |acc, f| acc | acc | alignment_multiplier * f.to_mode_bit())
     }
 }
 
@@ -176,23 +174,38 @@ fn get_test_policy() -> PosixPolicy {
         reasoner_version: String::from("0.0.1"),
         content: RawValue::from_string(raw_test_policy).unwrap(),
     };
-    
+
     // Note: IIUC for eFLINT there is a completely separate parser: https://gitlab.com/eflint/json-spec-rs.
     let test_policy: PosixPolicy = serde_json::from_str(raw_test_policy.content.get()).unwrap();
     test_policy
 }
 
-fn satisfies_posix_permissions(mode_bits: u32, user_type: UserType, permissions: &Vec<PosixPermission>) -> Result<(), Vec<&PosixPermission>> {
-    let unsatisfied_permissions: Vec<&PosixPermission> = permissions.into_iter().filter(|&permission| {
-        (mode_bits & permission.to_numeric_notation(&user_type)) != permission.to_numeric_notation(&user_type)
-    }).collect();
+fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, permissions: &[PosixPermission]) -> bool {
+    let mode_bits = std::fs::metadata(&path).expect("Could not get file metadata").permissions().mode();
+    let file_uid = std::fs::metadata(&path).expect("Could not get file metadata").uid();
+    let file_gid = std::fs::metadata(&path).expect("Could not get file metadata").uid();
+    if file_uid == user.uid {
+        let mask = UserType::FileOwner.get_mode_bitmask(permissions);
+        if mode_bits & mask == mask {
+            return true;
+        }
+    }
 
-    return if unsatisfied_permissions.is_empty() { Ok(()) } else { Err(unsatisfied_permissions) }
+    if user.gids.contains(&file_gid) {
+        let mask = UserType::Group.get_mode_bitmask(permissions);
+        if mode_bits & mask == mask {
+            return true;
+        }
+    }
+
+    let mask = UserType::Others.get_mode_bitmask(permissions);
+    mode_bits & mask == mask
 }
 
-fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, required_permissions: Vec<PosixPermission>, task_name: &Option<String>) -> bool {
+fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, task_name: Option<&str>) -> bool {
     // The datasets used in the workflow. E.g., "st_antonius_ect".
-    let datasets: Vec<Dataset> = find_datasets_in_workflow(&workflow, task_name);
+    let datasets: Vec<(Vec<PosixPermission>, Dataset)> =
+        find_datasets_in_workflow(&workflow, task_name).into_iter().map(|x| (vec![PosixPermission::Read], x)).collect();
 
     // A data index, which contains dataset identifiers and their underlying files.
     // E.g., the "st_antonius_ect" dataset contains the "text.txt" file. See: tests/data/*
@@ -203,38 +216,33 @@ fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, requi
     // Vec[("st_antonius_ect", "tests/data/umc_utrecht_ect/./test.txt")]
     let info_with_paths = datasets
         .iter()
-        .map(|dataset| data_index.get(&dataset.name).expect("Could not find dataset in dataindex"))
-        .flat_map(|datainfo| {
-            datainfo.access.values().map(|kind| match kind {
-                specifications::data::AccessKind::File{ path} => (datainfo.name.clone(), path.clone()),
+        .flat_map(|(permission, dataset)| {
+            let dataset = data_index.get(&dataset.name).expect("Could not find dataset in dataindex");
+            dataset.access.values().map(|kind| match kind {
+                specifications::data::AccessKind::File { path } => (permission.clone(), dataset.name.clone(), path.clone()),
             })
         })
         .collect::<Vec<_>>();
-    
-    // Given the file `paths`, check if the current process has the required permissions for each file. 
-    let is_allowed = info_with_paths.iter().map(|(dataset_identifier, path)| {
-        let permission_bits_on_file = std::fs::metadata(&path)
-            .expect("Could not get file metadata")
-            .permissions()
-            .mode();
-        return (path, satisfies_posix_permissions(
-            permission_bits_on_file,
-            UserType::from_string(&policy.get_local_name(dataset_identifier.clone(), workflow.user.name.clone())).unwrap(),
-            &required_permissions
-        ));
-    }).all(|(path, result)| match result {
-        Ok(_) => true,
-        Err(permission) => {
-            error!("The global user '{:}' does not have {:?} permissions(s) on {:?}", 
-                workflow.user.name.clone(), permission, path);
-            false
-        },
-    });
+
     info!("We need to evaluate the permissions of the following files {:#?}", info_with_paths);
+    // Given the file `paths`, check if the current process has the required permissions for each file.
+    let is_allowed = info_with_paths
+        .into_iter()
+        .map(|(permission, dataset_identifier, path)| {
+            // TODO: Unneeded expect
+            let user = policy.get_local_name(&dataset_identifier, &workflow.user.name).expect("Could not find user");
+            return (path.clone(), satisfies_posix_permissions(&path, user, &permission));
+        })
+        .inspect(|(path, result)| {
+            if !result {
+                error!("The global user '{:}' does not have required permissions on {:?}", workflow.user.name.clone(), path);
+            }
+        })
+        .all(|(_, result)| result);
 
     info!("Found: {} datasets", datasets.len());
-    for dataset in &datasets {
-        debug!("Dataset: {}", dataset.name);
+    for (_, dataset) in &datasets {
+        debug!("Dataset: {:?}", dataset.name);
     }
     is_allowed
 }
@@ -250,7 +258,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         let test_policy = get_test_policy();
-        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, vec!(PosixPermission::Execute), &Some(task));
+        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -268,13 +276,15 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         let test_policy = get_test_policy();
         // TODO: `task` is optional. What are the semantics here?
-        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, vec!(PosixPermission::Read), &Some(task.unwrap()));
+        let Some(task) = task else {
+            return Ok(ReasonerResponse::new(true, vec![]));
+        };
+        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
         return Ok(ReasonerResponse::new(true, vec![]));
     }
-
 
     async fn workflow_validation_request(
         &self,
@@ -284,12 +294,12 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         let test_policy = get_test_policy();
-        info!("Local user name: {}", test_policy.get_local_name(String::from("umc_utrecht_ect"), String::from("test")));
+        info!("Local user name: {:?}", test_policy.get_local_name("umc_utrecht_ect", "test"));
         info!("Workflow user name: {}", workflow.user.name);
-        
+
         // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all
         // datasets for now.
-        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, vec!(PosixPermission::Read, PosixPermission::Execute), &None);
+        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, None);
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -330,7 +340,7 @@ impl ConnectorWithContext for PosixReasonerConnector {
     }
 }
 
-fn find_datasets_in_workflow(workflow: &Workflow, task_name: &Option<String>) -> Vec<Dataset> {
+fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> Vec<Dataset> {
     let mut datasets: Vec<Dataset> = Vec::new();
     debug!("Walking the workflow in order to find datasets. Starting with {:?}", &workflow.start);
     find_datasets(&workflow.start, &mut datasets, task_name);
@@ -338,7 +348,9 @@ fn find_datasets_in_workflow(workflow: &Workflow, task_name: &Option<String>) ->
     datasets
 }
 
-fn find_datasets(elem: &Elem, datasets: &mut Vec<Dataset>, task_name: &Option<String>) {
+// TODO: Might be preferable to use references to the datasets
+fn find_datasets(elem: &Elem, datasets: &mut Vec<Dataset>, task_name: Option<&str>) {
+    // TODO: Split this into the read / write / execute datasets
     match elem {
         Elem::Task(task) => {
             debug!("Visiting task");
