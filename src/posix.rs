@@ -73,10 +73,15 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
+        // The datasets used in the workflow. E.g., "st_antonius_ect".
         let datasets = find_datasets_in_workflow(workflow);
 
+        // A data index, which contains dataset identifiers and their underlying files.
+        // E.g., the "st_antonius_ect" dataset contains the "text.txt" file. See: tests/data/*
         let data_index = brane_shr::utilities::create_data_index_from("tests/data");
 
+        // Contains the file paths of the files that are used in the workflow. E.g., if we use "st_antonius_ect" in the
+        // workflow, then `paths` includes: "tests/data/umc_utrecht_ect/./test.txt"
         let paths = datasets
             .iter()
             .map(|dataset| data_index.get(&dataset.name).expect("Could not find dataset in dataindex"))
@@ -87,6 +92,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
             })
             .collect::<Vec<_>>();
 
+        // Given the file `paths`, check if the current process has read permissions for each file.
         let is_allowed =
             paths.iter().map(|path| std::fs::metadata(path).expect("Could not get file metadata").permissions().mode()).all(|x| x & 004 == 004);
 
