@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::{collections::HashMap, error};
+use std::{collections::{HashMap, HashSet}, error};
 
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
@@ -362,63 +362,97 @@ impl ConnectorWithContext for PosixReasonerConnector {
 }
 
 fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> Vec<Dataset> {
-    let mut datasets: Vec<Dataset> = Vec::new();
     debug!("Walking the workflow in order to find datasets. Starting with {:?}", &workflow.start);
-    find_datasets(&workflow.start, &mut datasets, task_name);
+    // find_datasets(&workflow.start, &mut datasets, task_name);
+    let mut visitor = DatasetCollectorVisitor {
+        read_sets: Default::default(),
+        write_sets: Default::default(),
+        execute_sets: Default::default(),
+        task_name: task_name.map(|x| x.to_owned()),
+    };
 
-    datasets
+    walk_workflow(&workflow.start, &mut visitor);
+
+    // TODO: Return all datasets
+    visitor.read_sets
 }
 
-// TODO: Might be preferable to use references to the datasets
-fn find_datasets(elem: &Elem, datasets: &mut Vec<Dataset>, task_name: Option<&str>) {
+trait WorkflowVisitor {
+    fn visit_task(&mut self, task: &workflow::ElemTask){}
+    fn visit_commit(&mut self, commit: &workflow::ElemCommit){}
+    fn visit_branch(&mut self, branch: &workflow::ElemBranch){}
+    fn visit_parallel(&mut self, parallel: &workflow::ElemParallel){}
+    fn visit_loop(&mut self, loope: &workflow::ElemLoop){}
+    fn visit_next(&mut self){}
+    fn visit_stop(&mut self, stop: &HashSet<Dataset>){}
+}
+
+fn walk_workflow(elem: &Elem, mut visitor: &mut impl WorkflowVisitor) {
     // TODO: Split this into the read / write / execute datasets
     match elem {
         Elem::Task(task) => {
             debug!("Visiting task");
-            if (task_name.is_some() && *task_name.as_ref().unwrap() == task.name) || !task_name.is_some() {
-                datasets.extend(task.input.iter().cloned());
-                if let Some(output) = &task.output {
-                    datasets.push(output.clone());
-                }
-                find_datasets(&task.next, datasets, task_name);
-            }
+            visitor.visit_task(&task);
+            walk_workflow(&task.next, visitor);
         },
         Elem::Commit(commit) => {
-            debug!("Visiting task");
-            // TODO: Maybe we should handle `data_name`
-            if !task_name.is_some() {
-                datasets.extend(commit.input.iter().cloned());
-            }
-            find_datasets(&commit.next, datasets, task_name);
+            visitor.visit_commit(&commit);
+            visitor.visit_commit(&commit);
+            walk_workflow(&commit.next, visitor);
         },
         Elem::Branch(branch) => {
-            debug!("Visiting task");
+            visitor.visit_branch(&branch);
             for elem in &branch.branches {
-                find_datasets(elem, datasets, task_name);
+                walk_workflow(elem, visitor);
             }
 
-            find_datasets(&branch.next, datasets, task_name);
+            walk_workflow(&branch.next, visitor);
         },
         Elem::Parallel(parallel) => {
-            debug!("Visiting task");
+            visitor.visit_parallel(&parallel);
             for elem in &parallel.branches {
-                find_datasets(elem, datasets, task_name);
+                walk_workflow(elem, visitor);
             }
 
-            find_datasets(&parallel.next, datasets, task_name);
+            walk_workflow(&parallel.next, visitor);
         },
         Elem::Loop(loope) => {
-            debug!("Visiting task");
-            find_datasets(&loope.body, datasets, task_name);
-            find_datasets(&loope.next, datasets, task_name);
+            visitor.visit_loop(&loope);
+            walk_workflow(&loope.body, visitor);
+            walk_workflow(&loope.next, visitor);
         },
         Elem::Next => {
-            debug!("Visiting task");
+            visitor.visit_next();
             return;
         },
         Elem::Stop(stop) => {
-            debug!("Visiting task");
-            datasets.extend(stop.iter().cloned());
+            visitor.visit_stop(&stop);
         },
+    }
+}
+
+struct DatasetCollectorVisitor {
+    pub read_sets: Vec<Dataset>,
+    pub write_sets: Vec<Dataset>,
+    pub execute_sets: Vec<Dataset>,
+
+    pub task_name: Option<String>,
+}
+
+impl WorkflowVisitor for DatasetCollectorVisitor {
+    fn visit_task(&mut self, task: &workflow::ElemTask) {
+        if let Some(output) = &task.output {
+            self.read_sets.push(output.clone());
+        }
+    }
+
+    fn visit_commit(&mut self, commit: &workflow::ElemCommit) {
+        if !&self.task_name.is_some() {
+            self.write_sets.extend(commit.input.iter().cloned());
+        }
+    }
+
+    fn visit_stop(&mut self, stop_sets: &HashSet<Dataset>) {
+        self.write_sets.extend(stop_sets.iter().cloned());
     }
 }
