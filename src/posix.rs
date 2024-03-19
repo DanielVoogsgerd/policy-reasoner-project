@@ -185,9 +185,12 @@ fn get_test_policy() -> PosixPolicy {
 }
 
 fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, permissions: &[PosixPermission]) -> bool {
-    let mode_bits = std::fs::metadata(&path).expect("Could not get file metadata").permissions().mode();
-    let file_uid = std::fs::metadata(&path).expect("Could not get file metadata").uid();
-    let file_gid = std::fs::metadata(&path).expect("Could not get file metadata").uid();
+    let metadata = std::fs::metadata(&path).expect("Could not get file metadata");
+
+    let mode_bits = metadata.permissions().mode();
+    let file_uid = metadata.uid();
+    let file_gid = metadata.gid();
+
     if file_uid == user.uid {
         let mask = UserType::FileOwner.get_mode_bitmask(permissions);
         if mode_bits & mask == mask {
@@ -235,7 +238,7 @@ fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, task_
         .map(|(permission, dataset_identifier, path)| {
             // TODO: Unneeded expect
             let user = policy.get_local_name(&dataset_identifier, &workflow.user.name).expect("Could not find user");
-            return (path.clone(), satisfies_posix_permissions(&path, user, &permission));
+            (path.clone(), satisfies_posix_permissions(&path, user, &permission))
         })
         .inspect(|(path, result)| {
             if !result {
@@ -261,12 +264,10 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         workflow: Workflow,
         task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-
         //TODO: Only extract the first policy for now
         let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
         let content_str = policy_content.content.get().trim();
         let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
-
 
         println!("JSON String: {}", content_str);
 
@@ -276,7 +277,8 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
-        return Ok(ReasonerResponse::new(true, vec![]));
+
+        Ok(ReasonerResponse::new(true, vec![]))
     }
 
     async fn access_data_request(
@@ -309,7 +311,6 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-
         let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
         let content_str = policy_content.content.get().trim();
         let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
