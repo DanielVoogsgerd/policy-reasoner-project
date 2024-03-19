@@ -1,10 +1,21 @@
 {
-  "description": "Policy tinng init",
-  "version_description": "An example policy that allows EVERYTHING",
-  "content": [{
-      "reasoner": "no-reasoner",
-      "reasoner_version": "0.1.0",
+  "description": "This file contains the policy for various st_antonius_ect datasets.",
+  "version": "0.1.0",
+  "version_description": "The policy is used to define the users and groups that have access to the dataset.",
+  "content": [
+    {
+      "reasoner": "posix",
+      "reasoner_version": "0.0.1",
       "content": {
+        "st_antonius_ect": {
+          "test": { "uid": 1000, "gids": [1001, 1002, 1003] },
+          "halli": { "uid": 1001, "gids": [1001] }
+        },
+        "umc_utrecht_ect": {
+          "test": { "uid": 1000, "gids": [1001, 1002, 1003] },
+          "halli": { "uid": 1001, "gids": [1001] }
+        }
       }
-  }]
+    }
+  ]
 }

@@ -183,9 +183,27 @@ curl -X POST -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: applicatio
 ```
 
 ```bash
-# Make a policy active! Note: Version  updates w/ added policies
-curl -X PUT -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d '{ "version": 1 }' localhost:3030/v1/management/policies/active
+# Make a policy active! Note: Version updates w/ added policies
+curl -X PUT -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d '{"version": 5 }' localhost:3030/v1/management/policies/active
 ```
+
+### Posix policy
+Alternatively, a POSIX based policy can be used, which can be generated modified via the posix-policy.yaml file
+
+```bash
+#Generate the json file from the posix-policy-yaml file via the command (can be installed via brew or apt)
+yq -o=json -I=0 '.' ./tests/management/posix-policy.yml > ./tests/management/posix-policy.json
+
+```bash
+# Create the policy like before
+curl -X POST -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d "@tests/management/posix-policy.json" localhost:3030/v1/management/policies
+```
+
+```bash
+# Make a policy active (like before)
+curl -X POST -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application/json" -d "@tests/management/posix-policy.json" localhost:3030/v1/management/policies
+```
+
 
 
 ## Contribution

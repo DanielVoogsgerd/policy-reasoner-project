@@ -18,14 +18,14 @@ use workflow::{spec::Workflow, Dataset, Elem};
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {}
 
-#[derive(Deserialize, Debug)]
-pub struct PosixPolicy {
-    dataset_user_mapping: HashMap<String, PosixPolicyUserMapping>,
-}
+type DatasetIdentifier = String;
+type GlobalUsername = String;
+type PosixPolicyUserMapping = HashMap<GlobalUsername, PosixUser>;
+// type PosixPolicy = HashMap<DatasetIdentifier, PosixPolicyUserMapping>;
 
 #[derive(Deserialize, Debug)]
-pub struct PosixPolicyUserMapping {
-    user_mapping: HashMap<String, PosixUser>,
+pub struct PosixPolicy {
+    datasets: HashMap<DatasetIdentifier, PosixPolicyUserMapping>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -38,7 +38,7 @@ impl PosixPolicy {
     /// Given a dataset identifier (e.g., "umc_utrecht_ect") and a global username (e.g., "test"), returns the local
     /// triad (file_owner, group, or others) that this combination maps to.
     fn get_local_name(&self, dataset_identifier: &str, workflow_user: &str) -> Option<&PosixUser> {
-        self.dataset_user_mapping.get(dataset_identifier)?.user_mapping.get(workflow_user)
+        self.datasets.get(dataset_identifier)?.get(workflow_user)
     }
 }
 
@@ -143,12 +143,14 @@ fn get_test_policy() -> PosixPolicy {
                     "user_mappings": [
                         {
                             "global_username": "test",
-                            "local_username": "others"
-                        }, 
+                            "uid": 1000,
+                            "gid"s: [1001, 1002, 1003]
+                        },
                         {
                             "global_username": "halli",
-                            "local_username": "others"
-                        }
+                            "uid": 1001,
+                            "gid": [1001]
+                        },
                     ]
                 },
                 {
@@ -156,12 +158,14 @@ fn get_test_policy() -> PosixPolicy {
                     "user_mappings": [
                         {
                             "global_username": "test",
-                            "local_username": "others"
+                            "uid": 1000,
+                            "gid": [1001, 1002, 1003]
                         },
                         {
-                            "global_username": "test2",
-                            "local_username": "others"
-                        }
+                            "global_username": "halli",
+                            "uid": 1001,
+                            "gid"s: [1001]
+                        },
                     ]
                 }
             ]
@@ -252,13 +256,23 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
     async fn execute_task(
         &self,
         _logger: SessionedConnectorAuditLogger<L>,
-        _policy: Policy,
+        policy: Policy,
         _state: State,
         workflow: Workflow,
         task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let test_policy = get_test_policy();
-        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, Some(&task));
+
+        //TODO: Only extract the first policy for now
+        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
+        let content_str = policy_content.content.get().trim();
+        let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
+
+
+        println!("JSON String: {}", content_str);
+
+        // let posix_policy: PosixPolicy = serde_json::from_str(content_str).expect("Failed to parse the content into PosixPolicy");
+
+        let is_allowed = validate_dataset_permissions(&workflow, &posix_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -268,18 +282,20 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
     async fn access_data_request(
         &self,
         _logger: SessionedConnectorAuditLogger<L>,
-        _policy: Policy,
+        policy: Policy,
         _state: State,
         workflow: Workflow,
         _data: String,
         task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let test_policy = get_test_policy();
+        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
+        let content_str = policy_content.content.get().trim();
+        let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
         // TODO: `task` is optional. What are the semantics here?
         let Some(task) = task else {
             return Ok(ReasonerResponse::new(true, vec![]));
         };
-        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, Some(&task));
+        let is_allowed = validate_dataset_permissions(&workflow, &posix_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -289,17 +305,21 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
     async fn workflow_validation_request(
         &self,
         _logger: SessionedConnectorAuditLogger<L>,
-        _policy: Policy,
+        policy: Policy,
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let test_policy = get_test_policy();
-        info!("Local user name: {:?}", test_policy.get_local_name("umc_utrecht_ect", "test"));
+
+        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
+        let content_str = policy_content.content.get().trim();
+        let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
+
+        info!("Local user name: {:?}", posix_policy.get_local_name("umc_utrecht_ect", "test"));
         info!("Workflow user name: {}", workflow.user.name);
 
         // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all
         // datasets for now.
-        let is_allowed = validate_dataset_permissions(&workflow, &test_policy, None);
+        let is_allowed = validate_dataset_permissions(&workflow, &posix_policy, None);
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
