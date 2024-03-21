@@ -1,5 +1,8 @@
 use std::path::Path;
-use std::{collections::{HashMap, HashSet}, error};
+use std::{
+    collections::{HashMap, HashSet},
+    error,
+};
 
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
@@ -11,9 +14,9 @@ use nested_cli_parser::NestedCliParserHelpFormatter;
 use policy::{Policy, PolicyContent};
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use serde::Deserialize;
-use serde_json::value::RawValue;
 use state_resolver::State;
-use workflow::{spec::Workflow, Dataset, Elem};
+use workflow::utils::{walk_workflow_preorder, WorkflowVisitor};
+use workflow::{spec::Workflow, Dataset};
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {}
@@ -21,7 +24,6 @@ pub struct PosixReasonerConnector {}
 type DatasetIdentifier = String;
 type GlobalUsername = String;
 type PosixPolicyUserMapping = HashMap<GlobalUsername, PosixUser>;
-// type PosixPolicy = HashMap<DatasetIdentifier, PosixPolicyUserMapping>;
 
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
@@ -58,20 +60,9 @@ impl PosixPolicy {
 
 #[derive(Copy, Clone, Deserialize)]
 enum UserType {
-    FileOwner,
+    Owner,
     Group,
     Others,
-}
-
-impl UserType {
-    fn from_string(user_type: &str) -> Result<Self, &'static str> {
-        match user_type {
-            "file_owner" => Ok(UserType::FileOwner),
-            "group" => Ok(UserType::Group),
-            "others" => Ok(UserType::Others),
-            _ => Err("The user type provided does not exist."),
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -97,11 +88,11 @@ impl UserType {
     /// for `others` maps to `001`.
     fn get_mode_bitmask(&self, required_permissions: &[PosixPermission]) -> u32 {
         let alignment_multiplier = match self {
-            UserType::FileOwner => 0o100,
+            UserType::Owner => 0o100,
             UserType::Group => 0o10,
             UserType::Others => 0o1,
         };
-        required_permissions.iter().fold(0, |acc, f| acc | acc | alignment_multiplier * f.to_mode_bit())
+        required_permissions.iter().fold(0, |acc, f| acc | acc | (alignment_multiplier * f.to_mode_bit()))
     }
 }
 
@@ -132,59 +123,8 @@ impl PosixReasonerConnector {
     }
 }
 
-/// A simple test policy. TODO: Set up, parse and use the policy passed in via the framework.
-fn get_test_policy() -> PosixPolicy {
-    let raw_test_policy = String::from(
-        r#"
-        {
-            "datasets": [
-                {
-                    "name": "st_antonius_ect",
-                    "user_mappings": [
-                        {
-                            "global_username": "test",
-                            "uid": 1000,
-                            "gid"s: [1001, 1002, 1003]
-                        },
-                        {
-                            "global_username": "halli",
-                            "uid": 1001,
-                            "gid": [1001]
-                        },
-                    ]
-                },
-                {
-                    "name": "umc_utrecht_ect",
-                    "user_mappings": [
-                        {
-                            "global_username": "test",
-                            "uid": 1000,
-                            "gid": [1001, 1002, 1003]
-                        },
-                        {
-                            "global_username": "halli",
-                            "uid": 1001,
-                            "gid"s: [1001]
-                        },
-                    ]
-                }
-            ]
-        }
-        "#,
-    );
-
-    let raw_test_policy = PolicyContent {
-        reasoner: String::from("posix"),
-        reasoner_version: String::from("0.0.1"),
-        content: RawValue::from_string(raw_test_policy).unwrap(),
-    };
-
-    // Note: IIUC for eFLINT there is a completely separate parser: https://gitlab.com/eflint/json-spec-rs.
-    let test_policy: PosixPolicy = serde_json::from_str(raw_test_policy.content.get()).unwrap();
-    test_policy
-}
-
-fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, permissions: &[PosixPermission]) -> bool {
+/// Verifies whether the passed users has the requested permissions on a particular file
+fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, requested_permissions: &[PosixPermission]) -> bool {
     let metadata = std::fs::metadata(&path).expect("Could not get file metadata");
 
     let mode_bits = metadata.permissions().mode();
@@ -192,49 +132,45 @@ fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, permiss
     let file_gid = metadata.gid();
 
     if file_uid == user.uid {
-        let mask = UserType::FileOwner.get_mode_bitmask(permissions);
+        let mask = UserType::Owner.get_mode_bitmask(requested_permissions);
         if mode_bits & mask == mask {
             return true;
         }
     }
 
     if user.gids.contains(&file_gid) {
-        let mask = UserType::Group.get_mode_bitmask(permissions);
+        let mask = UserType::Group.get_mode_bitmask(requested_permissions);
         if mode_bits & mask == mask {
             return true;
         }
     }
 
-    let mask = UserType::Others.get_mode_bitmask(permissions);
+    let mask = UserType::Others.get_mode_bitmask(requested_permissions);
     mode_bits & mask == mask
 }
 
+/// Check if all the data accesses in the workflow are done on behalf of users with the required
+/// permissions
 fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, task_name: Option<&str>) -> bool {
     // The datasets used in the workflow. E.g., "st_antonius_ect".
-    let datasets: Vec<(Vec<PosixPermission>, Dataset)> =
-        find_datasets_in_workflow(&workflow, task_name).into_iter().map(|x| (vec![PosixPermission::Read], x)).collect();
+    let datasets = find_datasets_in_workflow(&workflow, task_name);
 
     // A data index, which contains dataset identifiers and their underlying files.
     // E.g., the "st_antonius_ect" dataset contains the "text.txt" file. See: tests/data/*
+    // TODO: Pass data index in using params
     let data_index = brane_shr::utilities::create_data_index_from("tests/data");
 
-    // Contains the file paths of the files that are used in the workflow. The dataset identifier is included as the
-    // first element in the returned tuples. E.g., if we use "st_antonius_ect" in the workflow, then `paths` includes:
-    // Vec[("st_antonius_ect", "tests/data/umc_utrecht_ect/./test.txt")]
-    let info_with_paths = datasets
-        .iter()
-        .flat_map(|(permission, dataset)| {
+    // FIXME: We can spare some copying here by using a reference
+    std::iter::empty()
+        .chain(datasets.read_sets.iter().zip(std::iter::repeat(vec![PosixPermission::Read])))
+        .chain(datasets.write_sets.iter().zip(std::iter::repeat(vec![PosixPermission::Write])))
+        .chain(datasets.execute_sets.iter().zip(std::iter::repeat(vec![PosixPermission::Read, PosixPermission::Execute])))
+        .flat_map(|(dataset, permission)| {
             let dataset = data_index.get(&dataset.name).expect("Could not find dataset in dataindex");
-            dataset.access.values().map(|kind| match kind {
+            dataset.access.values().map(move |kind| match kind {
                 specifications::data::AccessKind::File { path } => (permission.clone(), dataset.name.clone(), path.clone()),
             })
         })
-        .collect::<Vec<_>>();
-
-    info!("We need to evaluate the permissions of the following files {:#?}", info_with_paths);
-    // Given the file `paths`, check if the current process has the required permissions for each file.
-    let is_allowed = info_with_paths
-        .into_iter()
         .map(|(permission, dataset_identifier, path)| {
             // TODO: Unneeded expect
             let user = policy.get_local_name(&dataset_identifier, &workflow.user.name).expect("Could not find user");
@@ -245,13 +181,7 @@ fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, task_
                 error!("The global user '{:}' does not have required permissions on {:?}", workflow.user.name.clone(), path);
             }
         })
-        .all(|(_, result)| result);
-
-    info!("Found: {} datasets", datasets.len());
-    for (_, dataset) in &datasets {
-        debug!("Dataset: {:?}", dataset.name);
-    }
-    is_allowed
+        .all(|(_, result)| result)
 }
 
 #[async_trait::async_trait]
@@ -361,7 +291,13 @@ impl ConnectorWithContext for PosixReasonerConnector {
     }
 }
 
-fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> Vec<Dataset> {
+struct WorkflowDatasets {
+    read_sets: Vec<Dataset>,
+    write_sets: Vec<Dataset>,
+    execute_sets: Vec<Dataset>,
+}
+
+fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> WorkflowDatasets {
     debug!("Walking the workflow in order to find datasets. Starting with {:?}", &workflow.start);
     // find_datasets(&workflow.start, &mut datasets, task_name);
     let mut visitor = DatasetCollectorVisitor {
@@ -371,64 +307,10 @@ fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> Ve
         task_name: task_name.map(|x| x.to_owned()),
     };
 
-    walk_workflow(&workflow.start, &mut visitor);
+    walk_workflow_preorder(&workflow.start, &mut visitor);
 
     // TODO: Return all datasets
-    visitor.read_sets
-}
-
-trait WorkflowVisitor {
-    fn visit_task(&mut self, task: &workflow::ElemTask){}
-    fn visit_commit(&mut self, commit: &workflow::ElemCommit){}
-    fn visit_branch(&mut self, branch: &workflow::ElemBranch){}
-    fn visit_parallel(&mut self, parallel: &workflow::ElemParallel){}
-    fn visit_loop(&mut self, loope: &workflow::ElemLoop){}
-    fn visit_next(&mut self){}
-    fn visit_stop(&mut self, stop: &HashSet<Dataset>){}
-}
-
-fn walk_workflow(elem: &Elem, mut visitor: &mut impl WorkflowVisitor) {
-    // TODO: Split this into the read / write / execute datasets
-    match elem {
-        Elem::Task(task) => {
-            debug!("Visiting task");
-            visitor.visit_task(&task);
-            walk_workflow(&task.next, visitor);
-        },
-        Elem::Commit(commit) => {
-            visitor.visit_commit(&commit);
-            visitor.visit_commit(&commit);
-            walk_workflow(&commit.next, visitor);
-        },
-        Elem::Branch(branch) => {
-            visitor.visit_branch(&branch);
-            for elem in &branch.branches {
-                walk_workflow(elem, visitor);
-            }
-
-            walk_workflow(&branch.next, visitor);
-        },
-        Elem::Parallel(parallel) => {
-            visitor.visit_parallel(&parallel);
-            for elem in &parallel.branches {
-                walk_workflow(elem, visitor);
-            }
-
-            walk_workflow(&parallel.next, visitor);
-        },
-        Elem::Loop(loope) => {
-            visitor.visit_loop(&loope);
-            walk_workflow(&loope.body, visitor);
-            walk_workflow(&loope.next, visitor);
-        },
-        Elem::Next => {
-            visitor.visit_next();
-            return;
-        },
-        Elem::Stop(stop) => {
-            visitor.visit_stop(&stop);
-        },
-    }
+    WorkflowDatasets { read_sets: visitor.read_sets, write_sets: visitor.write_sets, execute_sets: visitor.execute_sets }
 }
 
 struct DatasetCollectorVisitor {
