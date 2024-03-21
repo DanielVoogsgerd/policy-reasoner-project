@@ -14,12 +14,15 @@ use nested_cli_parser::NestedCliParserHelpFormatter;
 use policy::{Policy, PolicyContent};
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use serde::Deserialize;
+use specifications::data::DataIndex;
 use state_resolver::State;
 use workflow::utils::{walk_workflow_preorder, WorkflowVisitor};
 use workflow::{spec::Workflow, Dataset};
 
 /***** LIBRARY *****/
-pub struct PosixReasonerConnector {}
+pub struct PosixReasonerConnector {
+    data_index: DataIndex
+}
 
 type DatasetIdentifier = String;
 type GlobalUsername = String;
@@ -97,12 +100,14 @@ impl UserType {
 }
 
 impl PosixReasonerConnector {
-    pub fn new(_cli_args: String) -> Result<Self, Box<dyn error::Error>> {
+    pub fn new(_cli_args: String, data_index: DataIndex) -> Result<Self, Box<dyn error::Error>> {
         info!("Creating new PosixReasonerConnector with {} plugin", std::any::type_name::<Self>());
 
         debug!("Parsing nested arguments for PosixReasonerConnector<{}>", std::any::type_name::<Self>());
 
-        Ok(PosixReasonerConnector {})
+        Ok(PosixReasonerConnector {
+            data_index
+        })
     }
 
     /// Returns a formatter that can be printed to understand the arguments to this connector.
@@ -151,14 +156,9 @@ fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, request
 
 /// Check if all the data accesses in the workflow are done on behalf of users with the required
 /// permissions
-fn validate_dataset_permissions(workflow: &Workflow, policy: &PosixPolicy, task_name: Option<&str>) -> bool {
+fn validate_dataset_permissions(workflow: &Workflow, data_index: &DataIndex, policy: &PosixPolicy, task_name: Option<&str>) -> bool {
     // The datasets used in the workflow. E.g., "st_antonius_ect".
     let datasets = find_datasets_in_workflow(&workflow, task_name);
-
-    // A data index, which contains dataset identifiers and their underlying files.
-    // E.g., the "st_antonius_ect" dataset contains the "text.txt" file. See: tests/data/*
-    // TODO: Pass data index in using params
-    let data_index = brane_shr::utilities::create_data_index_from("tests/data");
 
     // FIXME: We can spare some copying here by using a reference
     std::iter::empty()
@@ -203,7 +203,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
 
         // let posix_policy: PosixPolicy = serde_json::from_str(content_str).expect("Failed to parse the content into PosixPolicy");
 
-        let is_allowed = validate_dataset_permissions(&workflow, &posix_policy, Some(&task));
+        let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -227,7 +227,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         let Some(task) = task else {
             return Ok(ReasonerResponse::new(true, vec![]));
         };
-        let is_allowed = validate_dataset_permissions(&workflow, &posix_policy, Some(&task));
+        let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -250,7 +250,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
 
         // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all
         // datasets for now.
-        let is_allowed = validate_dataset_permissions(&workflow, &posix_policy, None);
+        let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, None);
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
         }
@@ -309,7 +309,6 @@ fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> Wo
 
     walk_workflow_preorder(&workflow.start, &mut visitor);
 
-    // TODO: Return all datasets
     WorkflowDatasets { read_sets: visitor.read_sets, write_sets: visitor.write_sets, execute_sets: visitor.execute_sets }
 }
 

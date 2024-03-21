@@ -116,7 +116,8 @@ async fn main() {
     // Parse arguments
     let args: Arguments = Arguments::parse();
 
-    let rconn = match PosixReasonerConnectorPlugin::new(args.clone().reasoner_connector.unwrap_or_else(String::new)) {
+    let data_index = brane_shr::utilities::create_data_index_from("tests/data");
+    let rconn = match PosixReasonerConnectorPlugin::new(args.clone().reasoner_connector.unwrap_or_else(String::new), data_index) {
         Ok(rconn) => rconn,
         Err(err) => {
             error!("{}", err);
