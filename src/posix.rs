@@ -21,9 +21,8 @@ use workflow::{spec::Workflow, Dataset};
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {
-    data_index: DataIndex
+    data_index: DataIndex,
 }
-
 type DatasetIdentifier = String;
 type GlobalUsername = String;
 type PosixPolicyUserMapping = HashMap<GlobalUsername, PosixUser>;
@@ -46,20 +45,6 @@ impl PosixPolicy {
         self.datasets.get(dataset_identifier)?.get(workflow_user)
     }
 }
-
-// Unix permissions (see: https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation)
-// Symbolic     Numeric       English
-// ----------   0000          no permissions
-// -rwx------   0700          read, write, & execute only for owner
-// -rwxrwx---   0770          read, write, & execute for owner and group
-// -rwxrwxrwx   0777          read, write, & execute for owner, group and others
-// ---x--x--x   0111          execute
-// --w--w--w-   0222          write
-// --wx-wx-wx   0333          write & execute
-// -r--r--r--   0444          read
-// -r-xr-xr-x   0555          read & execute
-// -rw-rw-rw-   0666          read & write
-// -rwxr-----   0740          owner can read, write, & execute; group can only read; others have no permissions
 
 #[derive(Copy, Clone, Deserialize)]
 enum UserType {
@@ -85,6 +70,19 @@ impl PosixPermission {
     }
 }
 
+// Unix permissions (see: https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation)
+// Symbolic     Numeric       English
+// ----------   0000          no permissions
+// -rwx------   0700          read, write, & execute only for owner
+// -rwxrwx---   0770          read, write, & execute for owner and group
+// -rwxrwxrwx   0777          read, write, & execute for owner, group and others
+// ---x--x--x   0111          execute
+// --w--w--w-   0222          write
+// --wx-wx-wx   0333          write & execute
+// -r--r--r--   0444          read
+// -r-xr-xr-x   0555          read & execute
+// -rw-rw-rw-   0666          read & write
+// -rwxr-----   0740          owner can read, write, & execute; group can only read; others have no permissions
 impl UserType {
     /// Called on a `PosixPermission` and passed a `user_type` will return the numeric notation that denotes being in
     /// possession of this permission for this user_type/triad. E.g., `Read` for `file_owner` maps to `400`, `Execute`
@@ -102,22 +100,11 @@ impl UserType {
 impl PosixReasonerConnector {
     pub fn new(_cli_args: String, data_index: DataIndex) -> Result<Self, Box<dyn error::Error>> {
         info!("Creating new PosixReasonerConnector with {} plugin", std::any::type_name::<Self>());
-
         debug!("Parsing nested arguments for PosixReasonerConnector<{}>", std::any::type_name::<Self>());
 
-        Ok(PosixReasonerConnector {
-            data_index
-        })
+        Ok(PosixReasonerConnector { data_index })
     }
 
-    /// Returns a formatter that can be printed to understand the arguments to this connector.
-    ///
-    /// # Arguments
-    /// - `short`: A shortname for the argument that contains the nested arguments we parse.
-    /// - `long`: A longname for the argument that contains the nested arguments we parse.
-    ///
-    /// # Returns
-    /// A [`NestedCliParserHelpFormatter`] that implements [`Display`].
     pub fn help<'l>(_short: char, _long: &'l str) -> NestedCliParserHelpFormatter<'static, 'l, MapParser> {
         todo!()
     }
@@ -154,8 +141,7 @@ fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, request
     mode_bits & mask == mask
 }
 
-/// Check if all the data accesses in the workflow are done on behalf of users with the required
-/// permissions
+/// Check if all the data accesses in the workflow are done on behalf of users with the required permissions
 fn validate_dataset_permissions(workflow: &Workflow, data_index: &DataIndex, policy: &PosixPolicy, task_name: Option<&str>) -> bool {
     // The datasets used in the workflow. E.g., "st_antonius_ect".
     let datasets = find_datasets_in_workflow(&workflow, task_name);
@@ -184,6 +170,15 @@ fn validate_dataset_permissions(workflow: &Workflow, data_index: &DataIndex, pol
         .all(|(_, result)| result)
 }
 
+//Function that extracts the posix policy from the policy object
+fn extract_policy(policy: Policy) -> PosixPolicy {
+    let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
+    let content_str = policy_content.content.get().trim();
+    let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
+    posix_policy
+}
+
+/***** LIBRARY *****/
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<L> for PosixReasonerConnector {
     async fn execute_task(
@@ -194,15 +189,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         workflow: Workflow,
         task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        //TODO: Only extract the first policy for now
-        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
-        let content_str = policy_content.content.get().trim();
-        let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
-
-        println!("JSON String: {}", content_str);
-
-        // let posix_policy: PosixPolicy = serde_json::from_str(content_str).expect("Failed to parse the content into PosixPolicy");
-
+        let posix_policy = extract_policy(policy);
         let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, Some(&task));
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
@@ -220,9 +207,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _data: String,
         task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
-        let content_str = policy_content.content.get().trim();
-        let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
+        let posix_policy = extract_policy(policy);
         // TODO: `task` is optional. What are the semantics here?
         let Some(task) = task else {
             return Ok(ReasonerResponse::new(true, vec![]));
@@ -241,15 +226,9 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
-        let content_str = policy_content.content.get().trim();
-        let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
 
-        info!("Local user name: {:?}", posix_policy.get_local_name("umc_utrecht_ect", "test"));
-        info!("Workflow user name: {}", workflow.user.name);
-
-        // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all
-        // datasets for now.
+        let posix_policy = extract_policy(policy);
+        // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all datasets for now.
         let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, None);
         if !is_allowed {
             return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
@@ -299,7 +278,6 @@ struct WorkflowDatasets {
 
 fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> WorkflowDatasets {
     debug!("Walking the workflow in order to find datasets. Starting with {:?}", &workflow.start);
-    // find_datasets(&workflow.start, &mut datasets, task_name);
     let mut visitor = DatasetCollectorVisitor {
         read_sets: Default::default(),
         write_sets: Default::default(),
@@ -316,7 +294,6 @@ struct DatasetCollectorVisitor {
     pub read_sets: Vec<Dataset>,
     pub write_sets: Vec<Dataset>,
     pub execute_sets: Vec<Dataset>,
-
     pub task_name: Option<String>,
 }
 
