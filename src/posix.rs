@@ -1,23 +1,25 @@
+use std::collections::HashSet;
+use std::iter::repeat;
 use std::path::Path;
-use std::{
-    collections::{HashMap, HashSet},
-    error,
-};
+use std::{collections::HashMap, error};
 
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
+use itertools::{Either, Itertools};
 use log::{debug, error, info};
 use nested_cli_parser::map_parser::MapParser;
 use nested_cli_parser::NestedCliParserHelpFormatter;
 use policy::{Policy, PolicyContent};
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use serde::Deserialize;
-use specifications::data::DataIndex;
+use specifications::data::{DataIndex, Location};
 use state_resolver::State;
 use workflow::utils::{walk_workflow_preorder, WorkflowVisitor};
 use workflow::{spec::Workflow, Dataset};
+
+static ASSUMED_LOCATION: &str = "surf";
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {
@@ -38,11 +40,23 @@ struct PosixUser {
     gids: Vec<u32>,
 }
 
+#[derive(thiserror::Error, Debug)]
+enum PolicyError {
+    #[error("Missing location: {0}")]
+    MissingLocation(String),
+    #[error("Missing user: {0} for location: {1}")]
+    MissingUser(String, String),
+}
+
 impl PosixPolicy {
     /// Given a dataset identifier (e.g., "umc_utrecht_ect") and a global username (e.g., "test"), returns the local
     /// triad (file_owner, group, or others) that this combination maps to.
-    fn get_local_name(&self, dataset_identifier: &str, workflow_user: &str) -> Option<&PosixUser> {
-        self.datasets.get(dataset_identifier)?.get(workflow_user)
+    fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixUser, PolicyError> {
+        self.datasets
+            .get(location)
+            .ok_or_else(|| PolicyError::MissingLocation(location.to_owned()))?
+            .get(workflow_user)
+            .ok_or_else(|| PolicyError::MissingUser(workflow_user.to_owned(), location.to_owned()))
     }
 }
 
@@ -110,7 +124,7 @@ impl PosixReasonerConnector {
     }
 
     #[inline]
-    fn cli_args() -> Vec<(char, &'static str, &'static str)> {
+    pub fn cli_args() -> Vec<(char, &'static str, &'static str)> {
         todo!()
     }
 }
@@ -141,33 +155,69 @@ fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, request
     mode_bits & mask == mask
 }
 
+enum ValidationOutput {
+    Ok,
+    // The string here represents a Dataset.name, we might want to encapsulate the Dataset itself
+    Fail(Vec<String>),
+}
+
+#[derive(thiserror::Error, Debug)]
+enum ValidationError {
+    #[error("Policy Error: {0}")]
+    PolicyError(PolicyError),
+    #[error("Unknown dataset: {0}")]
+    UnknownDataset(String),
+}
+
 /// Check if all the data accesses in the workflow are done on behalf of users with the required permissions
-fn validate_dataset_permissions(workflow: &Workflow, data_index: &DataIndex, policy: &PosixPolicy, task_name: Option<&str>) -> bool {
+fn validate_dataset_permissions(
+    workflow: &Workflow,
+    data_index: &DataIndex,
+    policy: &PosixPolicy,
+) -> Result<ValidationOutput, Vec<ValidationError>> {
     // The datasets used in the workflow. E.g., "st_antonius_ect".
-    let datasets = find_datasets_in_workflow(&workflow, task_name);
+    let datasets = find_datasets_in_workflow(&workflow);
 
     // FIXME: We can spare some copying here by using a reference
-    std::iter::empty()
-        .chain(datasets.read_sets.iter().zip(std::iter::repeat(vec![PosixPermission::Read])))
-        .chain(datasets.write_sets.iter().zip(std::iter::repeat(vec![PosixPermission::Write])))
-        .chain(datasets.execute_sets.iter().zip(std::iter::repeat(vec![PosixPermission::Read, PosixPermission::Execute])))
-        .flat_map(|(dataset, permission)| {
-            let dataset = data_index.get(&dataset.name).expect("Could not find dataset in dataindex");
-            dataset.access.values().map(move |kind| match kind {
-                specifications::data::AccessKind::File { path } => (permission.clone(), dataset.name.clone(), path.clone()),
-            })
+    let (forbidden, errors): (Vec<_>, Vec<_>) = std::iter::empty()
+        .chain(datasets.read_sets.iter().zip(repeat(vec![PosixPermission::Read])))
+        .chain(datasets.write_sets.iter().zip(repeat(vec![PosixPermission::Write])))
+        .chain(datasets.execute_sets.iter().zip(repeat(vec![PosixPermission::Read, PosixPermission::Execute])))
+        .flat_map(|((location, dataset), permission)| {
+            let Some(dataset) = data_index.get(&dataset.name) else {
+                return Either::Left(std::iter::once(Err(ValidationError::UnknownDataset(dataset.name.clone()))));
+            };
+            Either::Right(dataset.access.values().map(move |kind| match kind {
+                specifications::data::AccessKind::File { path } => {
+                    // TODO: It is probably a better idea to pass the user in seperate from the
+                    // workflow so we can check if the user exists in advance,
+                    info!("Contents of the DataInfo object:\n{:#?}", dataset);
+                    let user = policy.get_local_name(&location, &workflow.user.name).map_err(|e| ValidationError::PolicyError(e))?;
+                    let result = satisfies_posix_permissions(&path, user, &permission);
+                    return Ok((dataset.name.clone(), path, result));
+                },
+            }))
         })
-        .map(|(permission, dataset_identifier, path)| {
-            // TODO: Unneeded expect
-            let user = policy.get_local_name(&dataset_identifier, &workflow.user.name).expect("Could not find user");
-            (path.clone(), satisfies_posix_permissions(&path, user, &permission))
+        // From where we are gonna focus on the problems that occurred in the validation
+        // These can be seperated into groups: Errors (e.g. Non-existing users / files), and
+        // validation failures.
+        .filter(|res| match res {
+            // Filter out what was okay in either sense.
+            Ok((_, _, true)) => false,
+            _ => true,
         })
-        .inspect(|(path, result)| {
-            if !result {
-                error!("The global user '{:}' does not have required permissions on {:?}", workflow.user.name.clone(), path);
-            }
-        })
-        .all(|(_, result)| result)
+        .partition_map(|elem| match elem {
+            Ok((dataset_identifier, _, _)) => Either::Left(dataset_identifier),
+            Err(x) => Either::Right(x),
+        });
+
+    if !errors.is_empty() {
+        return Err(errors);
+    } else if forbidden.is_empty() {
+        return Ok(ValidationOutput::Ok);
+    } else {
+        return Ok(ValidationOutput::Fail(forbidden));
+    }
 }
 
 //Function that extracts the posix policy from the policy object
@@ -187,15 +237,17 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         policy: Policy,
         _state: State,
         workflow: Workflow,
-        task: String,
+        _task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         let posix_policy = extract_policy(policy);
-        let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, Some(&task));
-        if !is_allowed {
-            return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
+        match validate_dataset_permissions(&workflow, &self.data_index, &posix_policy) {
+            Ok(ValidationOutput::Ok) => Ok(ReasonerResponse::new(true, vec![])),
+            Ok(ValidationOutput::Fail(datasets)) => Ok(ReasonerResponse::new(
+                false,
+                datasets.into_iter().map(|dataset| format!("We do not have sufficient permissions for dataset: {dataset}")).collect(),
+            )),
+            Err(errors) => Ok(ReasonerResponse::new(false, errors.into_iter().map(|error| error.to_string()).collect())),
         }
-
-        Ok(ReasonerResponse::new(true, vec![]))
     }
 
     async fn access_data_request(
@@ -205,18 +257,17 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
         _data: String,
-        task: Option<String>,
+        _task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
         let posix_policy = extract_policy(policy);
-        // TODO: `task` is optional. What are the semantics here?
-        let Some(task) = task else {
-            return Ok(ReasonerResponse::new(true, vec![]));
-        };
-        let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, Some(&task));
-        if !is_allowed {
-            return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
+        match validate_dataset_permissions(&workflow, &self.data_index, &posix_policy) {
+            Ok(ValidationOutput::Ok) => Ok(ReasonerResponse::new(true, vec![])),
+            Ok(ValidationOutput::Fail(datasets)) => Ok(ReasonerResponse::new(
+                false,
+                datasets.into_iter().map(|dataset| format!("We do not have sufficient permissions for dataset: {dataset}")).collect(),
+            )),
+            Err(errors) => Ok(ReasonerResponse::new(false, errors.into_iter().map(|error| error.to_string()).collect())),
         }
-        return Ok(ReasonerResponse::new(true, vec![]));
     }
 
     async fn workflow_validation_request(
@@ -226,14 +277,15 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-
         let posix_policy = extract_policy(policy);
-        // TODO: What are the semantics of this endpoint? What permissions should the user have? Read + Execute on all datasets for now.
-        let is_allowed = validate_dataset_permissions(&workflow, &self.data_index, &posix_policy, None);
-        if !is_allowed {
-            return Ok(ReasonerResponse::new(false, vec!["We do not have sufficient permissions".to_owned()]));
+        match validate_dataset_permissions(&workflow, &self.data_index, &posix_policy) {
+            Ok(ValidationOutput::Ok) => Ok(ReasonerResponse::new(true, vec![])),
+            Ok(ValidationOutput::Fail(datasets)) => Ok(ReasonerResponse::new(
+                false,
+                datasets.into_iter().map(|dataset| format!("We do not have sufficient permissions for dataset: {dataset}")).collect(),
+            )),
+            Err(errors) => Ok(ReasonerResponse::new(false, errors.into_iter().map(|error| error.to_string()).collect())),
         }
-        return Ok(ReasonerResponse::new(true, vec![]));
     }
 }
 
@@ -271,18 +323,17 @@ impl ConnectorWithContext for PosixReasonerConnector {
 }
 
 struct WorkflowDatasets {
-    read_sets: Vec<Dataset>,
-    write_sets: Vec<Dataset>,
-    execute_sets: Vec<Dataset>,
+    read_sets: Vec<(Location, Dataset)>,
+    write_sets: Vec<(Location, Dataset)>,
+    execute_sets: Vec<(Location, Dataset)>,
 }
 
-fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> WorkflowDatasets {
+fn find_datasets_in_workflow(workflow: &Workflow) -> WorkflowDatasets {
     debug!("Walking the workflow in order to find datasets. Starting with {:?}", &workflow.start);
     let mut visitor = DatasetCollectorVisitor {
         read_sets: Default::default(),
         write_sets: Default::default(),
         execute_sets: Default::default(),
-        task_name: task_name.map(|x| x.to_owned()),
     };
 
     walk_workflow_preorder(&workflow.start, &mut visitor);
@@ -291,26 +342,46 @@ fn find_datasets_in_workflow(workflow: &Workflow, task_name: Option<&str>) -> Wo
 }
 
 struct DatasetCollectorVisitor {
-    pub read_sets: Vec<Dataset>,
-    pub write_sets: Vec<Dataset>,
-    pub execute_sets: Vec<Dataset>,
-    pub task_name: Option<String>,
+    pub read_sets: Vec<(Location, Dataset)>,
+    pub write_sets: Vec<(Location, Dataset)>,
+    pub execute_sets: Vec<(Location, Dataset)>,
 }
 
 impl WorkflowVisitor for DatasetCollectorVisitor {
     fn visit_task(&mut self, task: &workflow::ElemTask) {
+        // FIXME: Location is not currently sent as part of the workflow validation request,
+        // this makes this not really possible to do now. To ensure the code is working
+        // however, we will for the mean time assume the location
+
+        let location = task.location.clone().unwrap_or_else(|| String::from(ASSUMED_LOCATION));
         if let Some(output) = &task.output {
-            self.read_sets.push(output.clone());
+            self.read_sets.push((location.clone(), output.clone()));
         }
     }
 
     fn visit_commit(&mut self, commit: &workflow::ElemCommit) {
-        if !&self.task_name.is_some() {
-            self.write_sets.extend(commit.input.iter().cloned());
-        }
+        let location = commit.location.clone().unwrap_or_else(|| String::from(ASSUMED_LOCATION));
+
+        // if let Some(location) = &commit.location {
+        self.read_sets.extend(repeat(location.clone()).zip(commit.input.iter().cloned()));
+        // }
+
+        // TODO: Maybe create a dedicated enum type for this e.g. NewDataset for datasets that will be
+        // created, might fail if one already exists.
+
+        // FIXME: Just as above, the location type is assumed to be surf here, as there is no
+        // location support right now.
+        let location = commit.location.clone().unwrap_or_else(|| String::from(ASSUMED_LOCATION));
+
+        // if let Some(location) = &commit.location {
+        self.write_sets.push((location.clone(), Dataset { name: commit.data_name.clone(), from: None }));
+        // }
     }
 
+    // TODO: We do not really have a location for this one right now, we should figure out how to
+    // interpret this
     fn visit_stop(&mut self, stop_sets: &HashSet<Dataset>) {
-        self.write_sets.extend(stop_sets.iter().cloned());
+        let location = String::from(ASSUMED_LOCATION);
+        self.write_sets.extend(repeat(location).zip(stop_sets.iter().cloned()));
     }
 }

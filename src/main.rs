@@ -20,21 +20,15 @@ use clap::Parser;
 use error_trace::ErrorTrace as _;
 use humanlog::{DebugMode, HumanLogger};
 use log::{error, info};
-use reasonerconn::ReasonerConnector;
 use srv::Srv;
 
-use crate::auth::{JwtConfig, JwtResolver, KidResolver};
-use crate::logger::FileLogger;
-use crate::sqlite::SqlitePolicyDataStore;
+use policy_reasoner::{auth::{JwtConfig, JwtResolver, KidResolver}, logger::FileLogger};
+#[cfg(not(feature = "leak-public-errors"))]
+use policy_reasoner::eflint::{EFlintLeakNoErrors, EFlintReasonerConnector};
+#[cfg(feature = "leak-public-errors")]
+use policy_reasoner::logger::FileLogger;
+use policy_reasoner::sqlite::SqlitePolicyDataStore;
 
-pub mod auth;
-pub mod logger;
-pub mod models;
-pub mod schema;
-pub mod sqlite;
-pub mod state;
-pub mod posix;
-pub mod no_op;
 
 /***** HELPER FUNCTIONS *****/
 fn get_pauth_resolver() -> JwtResolver<KidResolver> {
@@ -50,9 +44,13 @@ fn get_dauth_resolver() -> JwtResolver<KidResolver> {
     JwtResolver::new(jwt_cfg, kid_resolver).unwrap()
 }
 
+
+
+
+
 /***** ARGUMENTS *****/
 /// Defines the arguments for the `policy-reasoner` server.
-#[derive(Debug, Parser, Clone)]
+#[derive(Debug, Parser)]
 struct Arguments {
     /// Whether to enable full debugging
     #[clap(long, global = true, help = "If given, enables more verbose debugging.")]
@@ -72,7 +70,7 @@ struct Arguments {
         env,
         help = "Arguments to pass to the current state resolver plugin. To find which are possible, see '--help-state-resolver'."
     )]
-    state_resolver: Option<String>,
+    state_resolver:      Option<String>,
 
     /// Shows the help menu for the reasoner connector.
     #[clap(long, help = "If given, shows the possible arguments to pass to the reasoner connector plugin in '--reasoner-connector'.")]
@@ -84,8 +82,12 @@ struct Arguments {
         env,
         help = "Arguments to pass to the current reasoner connector plugin. To find which are possible, see '--help-reasoner-connector'."
     )]
-    reasoner_connector: Option<String>,
+    reasoner_connector:      Option<String>,
 }
+
+
+
+
 
 /***** PLUGINS *****/
 /// The plugin used to do the audit logging.
@@ -99,31 +101,23 @@ type DeliberationAuthResolverPlugin = JwtResolver<KidResolver>;
 /// The plugin used to interact with the policy store.
 type PolicyStorePlugin = SqlitePolicyDataStore;
 
-// TODO: Might need to support cfg.
-type PosixReasonerConnectorPlugin = posix::PosixReasonerConnector;
-
-type NoOpReasonerConnectorPlugin = no_op::NoOpReasonerConnector;
+/// The plugin used to interact with the backend reasoner.
+#[cfg(feature = "leak-public-errors")]
+type ReasonerConnectorPlugin = EFlintReasonerConnector<EFlintLeakPrefixErrors>;
+#[cfg(not(feature = "leak-public-errors"))]
+type ReasonerConnectorPlugin = EFlintReasonerConnector<EFlintLeakNoErrors>;
 
 /// The plugin used to resolve policy input state.
 #[cfg(feature = "brane-api-resolver")]
 type StateResolverPlugin = crate::state::BraneApiResolver;
 #[cfg(not(feature = "brane-api-resolver"))]
-type StateResolverPlugin = crate::state::FileStateResolver;
+type StateResolverPlugin = policy_reasoner::state::FileStateResolver;
 
 /***** ENTRYPOINT *****/
 #[tokio::main]
 async fn main() {
     // Parse arguments
-    let args: Arguments = Arguments::parse();
-
-    let data_index = brane_shr::utilities::create_data_index_from("tests/data");
-    let rconn = match PosixReasonerConnectorPlugin::new(args.clone().reasoner_connector.unwrap_or_else(String::new), data_index) {
-        Ok(rconn) => rconn,
-        Err(err) => {
-            error!("{}", err);
-            std::process::exit(1);
-        },
-    };
+    let args = Arguments::parse();
 
     // Setup a logger
     if let Err(err) = HumanLogger::terminal(if args.trace { DebugMode::Full } else { DebugMode::Debug }).init() {
@@ -132,12 +126,11 @@ async fn main() {
     info!("{} - v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 
     // Handle help
-    // TODO: This should be refactored a bit, as we are creating multiple reasoners now, we probably want to use dynamic dispatch
     let mut exit: bool = false;
-    // if args.help_reasoner_connector {
-    //     println!("{}", rconn::help('r', "reasoner-connector"));
-    //     exit = true;
-    // }
+    if args.help_reasoner_connector {
+        println!("{}", ReasonerConnectorPlugin::help('r', "reasoner-connector"));
+        exit = true;
+    }
     if args.help_state_resolver {
         println!("{}", StateResolverPlugin::help('s', "state-resolver"));
         exit = true;
@@ -146,18 +139,18 @@ async fn main() {
         std::process::exit(0);
     }
 
-    run_app(args, rconn).await; // TODO: Add cfg support
-}
-
-async fn run_app<R>(args: Arguments, rconn: R)
-where
-    R: ReasonerConnector<AuditLogPlugin> + Send + Sync + 'static,
-{
     // Initialize the plugins
-    let logger: AuditLogPlugin = FileLogger::new("./audit-log.log");
+    let logger: AuditLogPlugin = FileLogger::new("./audit-log.log", env!("CARGO_BIN_NAME"));
     let pauthresolver: PolicyAuthResolverPlugin = get_pauth_resolver();
     let dauthresolver: DeliberationAuthResolverPlugin = get_dauth_resolver();
     let pstore: PolicyStorePlugin = SqlitePolicyDataStore::new("./data/policy.db");
+    let rconn: ReasonerConnectorPlugin = match ReasonerConnectorPlugin::new(args.reasoner_connector.unwrap_or_else(String::new)) {
+        Ok(rconn) => rconn,
+        Err(err) => {
+            error!("{}", err.trace());
+            std::process::exit(1);
+        },
+    };
 
     let sresolve: StateResolverPlugin = match StateResolverPlugin::new(args.state_resolver.unwrap_or_else(String::new)) {
         Ok(sresolve) => sresolve,

@@ -43,6 +43,8 @@ brane-cfg = { git = "https://github.com/epi-project/brane", branch = "develop", 
 specifications = { path = "../brane/specifications" }
 brane-shr = { path = "../brane/brane-shr" }
 uuid = { version = "1.7", features = ["serde", "v4"], optional = true }
+thiserror = "1.0.58"
+itertools = "0.12.1"
 
 
 [build-dependencies]
