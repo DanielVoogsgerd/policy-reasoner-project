@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::iter::repeat;
 use std::path::Path;
-use std::{collections::HashMap, error};
+use std::collections::HashMap;
 
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
@@ -9,8 +9,6 @@ use std::os::unix::fs::PermissionsExt;
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
 use itertools::{Either, Itertools};
 use log::{debug, error, info};
-use nested_cli_parser::map_parser::MapParser;
-use nested_cli_parser::NestedCliParserHelpFormatter;
 use policy::{Policy, PolicyContent};
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use serde::Deserialize;
@@ -19,19 +17,21 @@ use state_resolver::State;
 use workflow::utils::{walk_workflow_preorder, WorkflowVisitor};
 use workflow::{spec::Workflow, Dataset};
 
+/// This location is an assumption right now, and is needed as long as the location is not passed
+/// to the workflow validator
 static ASSUMED_LOCATION: &str = "surf";
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {
     data_index: DataIndex,
 }
-type DatasetIdentifier = String;
+type LocationIdentifier = String;
 type GlobalUsername = String;
 type PosixPolicyUserMapping = HashMap<GlobalUsername, PosixUser>;
 
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
-    datasets: HashMap<DatasetIdentifier, PosixPolicyUserMapping>,
+    datasets: HashMap<LocationIdentifier, PosixPolicyUserMapping>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -112,20 +112,11 @@ impl UserType {
 }
 
 impl PosixReasonerConnector {
-    pub fn new(_cli_args: String, data_index: DataIndex) -> Result<Self, Box<dyn error::Error>> {
+    pub fn new(data_index: DataIndex) -> Self {
         info!("Creating new PosixReasonerConnector with {} plugin", std::any::type_name::<Self>());
         debug!("Parsing nested arguments for PosixReasonerConnector<{}>", std::any::type_name::<Self>());
 
-        Ok(PosixReasonerConnector { data_index })
-    }
-
-    pub fn help<'l>(_short: char, _long: &'l str) -> NestedCliParserHelpFormatter<'static, 'l, MapParser> {
-        todo!()
-    }
-
-    #[inline]
-    pub fn cli_args() -> Vec<(char, &'static str, &'static str)> {
-        todo!()
+        PosixReasonerConnector { data_index }
     }
 }
 
@@ -178,7 +169,6 @@ fn validate_dataset_permissions(
     // The datasets used in the workflow. E.g., "st_antonius_ect".
     let datasets = find_datasets_in_workflow(&workflow);
 
-    // FIXME: We can spare some copying here by using a reference
     let (forbidden, errors): (Vec<_>, Vec<_>) = std::iter::empty()
         .chain(datasets.read_sets.iter().zip(repeat(vec![PosixPermission::Read])))
         .chain(datasets.write_sets.iter().zip(repeat(vec![PosixPermission::Write])))
@@ -189,8 +179,6 @@ fn validate_dataset_permissions(
             };
             Either::Right(dataset.access.values().map(move |kind| match kind {
                 specifications::data::AccessKind::File { path } => {
-                    // TODO: It is probably a better idea to pass the user in seperate from the
-                    // workflow so we can check if the user exists in advance,
                     info!("Contents of the DataInfo object:\n{:#?}", dataset);
                     let user = policy.get_local_name(&location, &workflow.user.name).map_err(|e| ValidationError::PolicyError(e))?;
                     let result = satisfies_posix_permissions(&path, user, &permission);
@@ -361,21 +349,12 @@ impl WorkflowVisitor for DatasetCollectorVisitor {
 
     fn visit_commit(&mut self, commit: &workflow::ElemCommit) {
         let location = commit.location.clone().unwrap_or_else(|| String::from(ASSUMED_LOCATION));
-
-        // if let Some(location) = &commit.location {
         self.read_sets.extend(repeat(location.clone()).zip(commit.input.iter().cloned()));
-        // }
 
         // TODO: Maybe create a dedicated enum type for this e.g. NewDataset for datasets that will be
         // created, might fail if one already exists.
-
-        // FIXME: Just as above, the location type is assumed to be surf here, as there is no
-        // location support right now.
         let location = commit.location.clone().unwrap_or_else(|| String::from(ASSUMED_LOCATION));
-
-        // if let Some(location) = &commit.location {
         self.write_sets.push((location.clone(), Dataset { name: commit.data_name.clone(), from: None }));
-        // }
     }
 
     // TODO: We do not really have a location for this one right now, we should figure out how to
