@@ -1,3 +1,11 @@
+//! A policy reasoner implementation based on POSIX file permissions
+//!
+//! TODO: This is a module right now, but should be part of the binary.
+//! this is because right now documenting binaries is tricky in rust. As soon as we find a better
+//! solution this documentation should be moved to the binary itself.
+//! This might be useful in general, but particularly it is important to document reference
+//! implementations
+
 use std::collections::HashSet;
 use std::iter::repeat;
 use std::path::Path;

@@ -1,3 +1,6 @@
+//! A policy reasoner implementation that does as little as possible to do as little as possible
+//!
+//! This reasoner will always respond that a request is valid
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
 
 use log::debug;
