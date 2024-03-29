@@ -30,9 +30,6 @@ use workflow::{spec::Workflow, Dataset};
 static ASSUMED_LOCATION: &str = "surf";
 
 /***** LIBRARY *****/
-pub struct PosixReasonerConnector {
-    data_index: DataIndex,
-}
 /// E.g., `st_antonius_etc`.
 type LocationIdentifier = String;
 /// The global username as defined in [`Workflow.user`]. E.g., `test`.
@@ -42,6 +39,40 @@ type GlobalUsername = String;
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
     datasets: HashMap<LocationIdentifier, PosixPolicyLocation>,
+}
+
+impl PosixPolicy {
+    /// Extracts and parses a [`PosixPolicy`] from a generic [`Policy`] object. Expects the policy to be specified and
+    /// expects it to adhere to the [`PosixPolicy`] YAML structure. See [`PosixPolicy`].
+    fn from_policy(policy: Policy) -> Self {
+        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
+        let content_str = policy_content.content.get().trim();
+        PosixPolicy { 
+            datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") 
+        }
+    }
+
+    /// Given a location (e.g., `st_antonius_ect`) and the workflow user's name (e.g., `test`), returns the
+    /// [`PosixLocalIdentity`] for that user.
+    /// 
+    /// The returned identity is used for file permission checks. For more about this permissions check see
+    /// [`validate_dataset_permissions`].
+    fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixLocalIdentity, PolicyError> {
+        self.datasets
+            .get(location)
+            .ok_or_else(|| PolicyError::MissingLocation(location.to_owned()))?
+            .user_map
+            .get(workflow_user)
+            .ok_or_else(|| PolicyError::MissingUser(workflow_user.to_owned(), location.to_owned()))
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+enum PolicyError {
+    #[error("Missing location: {0}")]
+    MissingLocation(String),
+    #[error("Missing user: {0} for location: {1}")]
+    MissingUser(String, String),
 }
 
 /// Part of the [`PosixPolicy`]. Represents a location (e.g., `st_antonius_etc`) and contains the global workflow
@@ -80,49 +111,6 @@ struct PosixLocalIdentity {
     gids: Vec<u32>,
 }
 
-#[derive(thiserror::Error, Debug)]
-enum PolicyError {
-    #[error("Missing location: {0}")]
-    MissingLocation(String),
-    #[error("Missing user: {0} for location: {1}")]
-    MissingUser(String, String),
-}
-
-impl PosixPolicy {
-    /// Extracts and parses a [`PosixPolicy`] from a generic [`Policy`] object. Expects the policy to be specified and expects
-    /// it to adhere to the [`PosixPolicy`] YAML structure. See [`PosixPolicy`].
-    fn from_policy(policy: Policy) -> Self {
-        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
-        let content_str = policy_content.content.get().trim();
-        PosixPolicy { 
-            datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") 
-        }
-    }
-
-    /// Given a location (e.g., `st_antonius_ect`) and the workflow user's name (e.g., `test`), returns the
-    /// [`PosixLocalIdentity`] for that user.
-    /// 
-    /// The returned identity is used for file permission checks. For more about this permissions check see
-    /// [`validate_dataset_permissions`].
-    fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixLocalIdentity, PolicyError> {
-        self.datasets
-            .get(location)
-            .ok_or_else(|| PolicyError::MissingLocation(location.to_owned()))?
-            .user_map
-            .get(workflow_user)
-            .ok_or_else(|| PolicyError::MissingUser(workflow_user.to_owned(), location.to_owned()))
-    }
-}
-
-/// Represents a POSIX file class, also known as a scope. See:
-/// <https://en.wikipedia.org/wiki/File-system_permissions#Classes>.
-#[derive(Copy, Clone, Deserialize)]
-enum PosixFileClass {
-    Owner,
-    Group,
-    Others,
-}
-
 /// Represents a POSIX file permission. See: <https://en.wikipedia.org/wiki/File-system_permissions#Permissions>.
 #[derive(Debug, Copy, Clone)]
 enum PosixFilePermission {
@@ -150,6 +138,15 @@ impl PosixFilePermission {
     }
 }
 
+/// Represents a POSIX file class, also known as a scope. See:
+/// <https://en.wikipedia.org/wiki/File-system_permissions#Classes>.
+#[derive(Copy, Clone, Deserialize)]
+enum PosixFileClass {
+    Owner,
+    Group,
+    Others,
+}
+
 impl PosixFileClass {
     /// Given a list of [`PosixFilePermission`]s will return an octal mode bitmask for this [`PosixFileClass`].
     /// 
@@ -163,15 +160,6 @@ impl PosixFileClass {
             PosixFileClass::Others => 0o1,
         };
         required_permissions.iter().fold(0, |acc, f| acc | acc | (alignment_multiplier * f.to_mode_bit()))
-    }
-}
-
-impl PosixReasonerConnector {
-    pub fn new(data_index: DataIndex) -> Self {
-        info!("Creating new PosixReasonerConnector with {} plugin", std::any::type_name::<Self>());
-        debug!("Parsing nested arguments for PosixReasonerConnector<{}>", std::any::type_name::<Self>());
-
-        PosixReasonerConnector { data_index }
     }
 }
 
@@ -265,6 +253,19 @@ fn validate_dataset_permissions(
         return Ok(ValidationOutput::Ok);
     } else {
         return Ok(ValidationOutput::Fail(forbidden));
+    }
+}
+
+pub struct PosixReasonerConnector {
+    data_index: DataIndex,
+}
+
+impl PosixReasonerConnector {
+    pub fn new(data_index: DataIndex) -> Self {
+        info!("Creating new PosixReasonerConnector with {} plugin", std::any::type_name::<Self>());
+        debug!("Parsing nested arguments for PosixReasonerConnector<{}>", std::any::type_name::<Self>());
+
+        PosixReasonerConnector { data_index }
     }
 }
 
