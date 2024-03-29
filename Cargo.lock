@@ -477,7 +477,7 @@ dependencies = [
  "serde_json_any_key",
  "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "strum 0.25.0",
- "uuid 1.7.0",
+ "uuid",
 ]
 
 [[package]]
@@ -581,7 +581,7 @@ dependencies = [
  "serde_json",
  "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
  "tokio",
- "uuid 1.7.0",
+ "uuid",
 ]
 
 [[package]]
@@ -664,7 +664,7 @@ dependencies = [
  "log",
  "num-traits",
  "parking_lot",
- "prost 0.12.3",
+ "prost",
  "rand 0.8.5",
  "reqwest",
  "serde",
@@ -675,8 +675,8 @@ dependencies = [
  "tokio",
  "tokio-tar",
  "tokio-util",
- "tonic 0.11.0",
- "uuid 1.7.0",
+ "tonic",
+ "uuid",
 ]
 
 [[package]]
@@ -991,7 +991,7 @@ dependencies = [
  "serde",
  "serde_json",
  "transform",
- "uuid 1.7.0",
+ "uuid",
  "workflow 0.3.0",
 ]
 
@@ -1007,7 +1007,7 @@ dependencies = [
  "serde",
  "serde_json",
  "transform",
- "uuid 1.7.0",
+ "uuid",
  "workflow 0.3.0",
 ]
 
@@ -1684,7 +1684,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "toml 0.8.11",
- "uuid 1.7.0",
+ "uuid",
 ]
 
 [[package]]
@@ -1909,6 +1909,15 @@ name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -2512,6 +2521,7 @@ dependencies = [
  "error-trace",
  "graphql_client",
  "humanlog",
+ "itertools 0.12.1",
  "jsonwebtoken",
  "log",
  "nested-cli-parser",
@@ -2525,8 +2535,9 @@ dependencies = [
  "specifications 3.0.0",
  "srv 0.1.0",
  "state-resolver 0.1.0",
+ "thiserror",
  "tokio",
- "uuid 1.7.0",
+ "uuid",
  "warp",
  "workflow 0.1.0",
 ]
@@ -2581,35 +2592,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
-dependencies = [
- "bytes",
- "prost-derive 0.11.9",
-]
-
-[[package]]
-name = "prost"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "146c289cda302b98a28d40c8b3b90498d6e526dd24ac2ecea73e4e491685b94a"
 dependencies = [
  "bytes",
- "prost-derive 0.12.3",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5d2d8d10f3c6ded6da8b05b5fb3b8a5082514344d56c9f871412d29b4e075b4"
-dependencies = [
- "anyhow",
- "itertools 0.10.5",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
+ "prost-derive",
 ]
 
 [[package]]
@@ -2627,20 +2615,11 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
-version = "0.11.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
-dependencies = [
- "prost 0.11.9",
-]
-
-[[package]]
-name = "prost-types"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "193898f59edcf43c26227dcd4c8427f00d99d61e95dcde58dabd49fa291d470e"
 dependencies = [
- "prost 0.12.3",
+ "prost",
 ]
 
 [[package]]
@@ -3357,14 +3336,17 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
+ "base64ct",
  "chrono",
  "const_format",
  "enum-debug",
+ "futures",
+ "jsonwebtoken",
  "log",
  "num-traits",
  "parking_lot",
- "prost 0.11.9",
- "prost-types 0.11.9",
+ "prost",
+ "prost-types",
  "reqwest",
  "semver",
  "serde",
@@ -3375,8 +3357,8 @@ dependencies = [
  "serde_yaml 0.9.32",
  "strum 0.24.1",
  "strum_macros 0.24.3",
- "tonic 0.9.2",
- "uuid 0.8.2",
+ "tonic",
+ "uuid",
 ]
 
 [[package]]
@@ -3396,8 +3378,8 @@ dependencies = [
  "log",
  "num-traits",
  "parking_lot",
- "prost 0.12.3",
- "prost-types 0.12.3",
+ "prost",
+ "prost-types",
  "reqwest",
  "semver",
  "serde",
@@ -3408,8 +3390,8 @@ dependencies = [
  "serde_yaml 0.9.32",
  "strum 0.24.1",
  "strum_macros 0.24.3",
- "tonic 0.11.0",
- "uuid 1.7.0",
+ "tonic",
+ "uuid",
 ]
 
 [[package]]
@@ -3439,7 +3421,7 @@ dependencies = [
  "state-resolver 0.1.0",
  "tokio",
  "tokio-scoped",
- "uuid 1.7.0",
+ "uuid",
  "warp",
  "workflow 0.1.0",
 ]
@@ -3466,7 +3448,7 @@ dependencies = [
  "state-resolver 0.1.0 (git+https://github.com/epi-project/policy-reasoner)",
  "tokio",
  "tokio-scoped",
- "uuid 1.7.0",
+ "uuid",
  "warp",
  "workflow 0.1.0 (git+https://github.com/epi-project/policy-reasoner)",
 ]
@@ -3887,34 +3869,6 @@ dependencies = [
 
 [[package]]
 name = "tonic"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3082666a3a6433f7f511c7192923fa1fe07c69332d3c6a2e6bb040b569199d5a"
-dependencies = [
- "async-trait",
- "axum",
- "base64 0.21.7",
- "bytes",
- "futures-core",
- "futures-util",
- "h2",
- "http 0.2.12",
- "http-body",
- "hyper",
- "hyper-timeout",
- "percent-encoding",
- "pin-project",
- "prost 0.11.9",
- "tokio",
- "tokio-stream",
- "tower",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "tonic"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76c4eb7a4e9ef9d4763600161f12f5070b92a578e1b634db88a6887844c91a13"
@@ -3931,7 +3885,7 @@ dependencies = [
  "hyper-timeout",
  "percent-encoding",
  "pin-project",
- "prost 0.12.3",
+ "prost",
  "tokio",
  "tokio-stream",
  "tower",
@@ -4131,16 +4085,6 @@ name = "utf8parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
-
-[[package]]
-name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "getrandom",
- "serde",
-]
 
 [[package]]
 name = "uuid"
