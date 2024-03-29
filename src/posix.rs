@@ -162,14 +162,14 @@ impl PosixPolicy {
     fn from_policy(policy: Policy) -> Self {
         let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
         let content_str = policy_content.content.get().trim();
-        PosixPolicy { 
-            datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") 
+        PosixPolicy {
+            datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy")
         }
     }
 
     /// Given a location (e.g., `st_antonius_ect`) and the workflow user's name (e.g., `test`), returns the
     /// [`PosixLocalIdentity`] for that user.
-    /// 
+    ///
     /// The returned identity is used for file permission checks. For more about this permissions check see
     /// [`validate_dataset_permissions`].
     fn get_local_identity(&self, location: &str, workflow_user: &str) -> Result<&PosixLocalIdentity, PolicyError> {
@@ -200,11 +200,11 @@ pub struct PosixPolicyLocation {
 /// The local identity defines a user id and a list of group ids. The local identity is used on the machine on which a
 /// dataset resides to check the local file permissions. For more about this permissions check see
 /// [`validate_dataset_permissions`].
-/// 
-/// This identity is defined in the Posix policy file. Global usernames in the Posix policy map to these local
+///
+/// This identity is defined in the POSIX policy file. Global usernames in the POSIX policy map to these local
 /// identities.
 ///
-/// Example, given the Posix policy file below, then for the `st_antonius_ect` location, the `test` global username maps
+/// Example, given the POSIX policy file below, then for the `st_antonius_ect` location, the `test` global username maps
 /// to a local identity that contains the uid and gids.
 /// ``` yaml
 ///  # file: posix-policy.yml
@@ -264,7 +264,7 @@ enum PosixFileClass {
 
 impl PosixFileClass {
     /// Given a list of [`PosixFilePermission`]s will return an octal mode bitmask for this [`PosixFileClass`].
-    /// 
+    ///
     /// This bitmask represents what mode bits should be set on a file such that this class (e.g., `Owner`) satisfies
     /// the permissions (e.g, `Read`, `Write`). In this case it would be `0o400` (Read for Owner) and `0o200` (Write for
     /// Owner), which sums to the returned `0o600` (Read and Write for Owner).
@@ -479,7 +479,7 @@ impl ConnectorWithContext for PosixReasonerConnector {
 }
 
 /// The datasets accessed and/or modified in a workflow. These are grouped by file permission type. For creating this
-/// struct see: [`find_datasets_in_workflow`]. TODO
+/// struct see: [`find_datasets_in_workflow`].
 struct WorkflowDatasets {
     read_sets: Vec<(Location, Dataset)>,
     write_sets: Vec<(Location, Dataset)>,
@@ -498,7 +498,6 @@ fn find_datasets_in_workflow(workflow: &Workflow) -> WorkflowDatasets {
 
     WorkflowDatasets { read_sets: visitor.read_sets, write_sets: visitor.write_sets, execute_sets: visitor.execute_sets }
 }
-// TODO: Move to method?
 
 /// Implements a visitor that traverses a [`Workflow`] and collect the datasets that are accessed and/or modified in
 /// the workflow. See: [`WorkflowDatasets`] and [`WorkflowVisitor`].
