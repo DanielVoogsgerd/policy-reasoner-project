@@ -106,7 +106,7 @@ async fn main() {
     // Parse arguments
     let args: Arguments = Arguments::parse();
 
-    let data_index = brane_shr::utilities::create_data_index_from("tests/data");
+    let data_index = brane_shr::utilities::create_data_index_from(std::env::var("DATA_INDEX").expect("Data index should either be provided by environment variable or in the .env file"));
     let rconn = PosixReasonerConnectorPlugin::new(data_index);
 
     // Setup a logger
