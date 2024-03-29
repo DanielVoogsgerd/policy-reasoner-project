@@ -45,6 +45,7 @@ brane-shr = { path = "../brane/brane-shr" }
 uuid = { version = "1.7", features = ["serde", "v4"], optional = true }
 thiserror = "1.0.58"
 itertools = "0.12.1"
+dotenvy = "0.15.7"
 
 
 [build-dependencies]

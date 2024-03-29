@@ -35,11 +35,15 @@ pub struct PosixReasonerConnector {
 }
 type LocationIdentifier = String;
 type GlobalUsername = String;
-type PosixPolicyUserMapping = HashMap<GlobalUsername, PosixUser>;
 
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
-    datasets: HashMap<LocationIdentifier, PosixPolicyUserMapping>,
+    datasets: HashMap<LocationIdentifier, PosixPolicyLocation>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PosixPolicyLocation {
+    user_map: HashMap<GlobalUsername, PosixUser>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -63,6 +67,7 @@ impl PosixPolicy {
         self.datasets
             .get(location)
             .ok_or_else(|| PolicyError::MissingLocation(location.to_owned()))?
+            .user_map
             .get(workflow_user)
             .ok_or_else(|| PolicyError::MissingUser(workflow_user.to_owned(), location.to_owned()))
     }

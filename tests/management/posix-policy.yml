@@ -5,25 +5,27 @@ content:
   - reasoner: posix
     reasoner_version: 0.0.1
     content:
-      st_antonius_ect:
-        test:
-          uid: 1000
-          gids:
-            - 1001
-            - 1002
-            - 1003
-        halli:
-          uid: 1001
-          gids:
-            - 1001
+      surf:
+        user_map:
+          test:
+            uid: 1000
+            gids:
+              - 1001
+              - 1002
+              - 1003
+          halli:
+            uid: 1001
+            gids:
+              - 1001
       umc_utrecht_ect:
-        test:
-          uid: 1000
-          gids:
-            - 1001
-            - 1002
-            - 1003
-        halli:
-          uid: 1001
-          gids:
-            - 1001
+        user_map:
+          test:
+            uid: 1000
+            gids:
+              - 1001
+              - 1002
+              - 1003
+          halli:
+            uid: 1001
+            gids:
+              - 1001
