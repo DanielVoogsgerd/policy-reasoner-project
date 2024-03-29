@@ -48,7 +48,7 @@ pub struct PosixPolicy {
 /// username to local identity mappings for this location.
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicyLocation {
-    user_map: HashMap<GlobalUsername, PosixUser>,
+    user_map: HashMap<GlobalUsername, PosixLocalIdentity>,
 }
 
 /// The local identity defines a user id and a list of group ids. The local identity is used on the machine where a
@@ -73,7 +73,7 @@ pub struct PosixPolicyLocation {
 ///            - 1003
 /// ```
 #[derive(Deserialize, Debug)]
-struct PosixUser {
+struct PosixLocalIdentity {
     /// The user identifier of a Linux user.
     uid: u32,
     /// A list of Linux group identifiers.
@@ -94,7 +94,7 @@ impl PosixPolicy {
     /// 
     /// The returned identity is used for file permission checks. For more about this permissions check see
     /// [`validate_dataset_permissions`].
-    fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixUser, PolicyError> {
+    fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixLocalIdentity, PolicyError> {
         self.datasets
             .get(location)
             .ok_or_else(|| PolicyError::MissingLocation(location.to_owned()))?
@@ -168,22 +168,21 @@ impl PosixReasonerConnector {
 /// Verifies whether the passed [`PosixLocalIdentity`] has all of the requested permissions (e.g., `Read` and `Write`)
 /// on a particular file (defined by the `path`). The identity's user id and group ids are checked against the file
 /// owner's user id and group id respectively. Additionally, the `Others` class permissions are also checked.
-/// Verifies whether the passed users has the requested permissions on a particular file
-fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, requested_permissions: &[PosixFilePermission]) -> bool {
+fn satisfies_posix_permissions(path: impl AsRef<Path>, local_identity: &PosixLocalIdentity, requested_permissions: &[PosixFilePermission]) -> bool {
     let metadata = std::fs::metadata(&path).expect("Could not get file metadata");
 
     let mode_bits = metadata.permissions().mode();
-    let file_uid = metadata.uid();
-    let file_gid = metadata.gid();
+    let file_owner_uid = metadata.uid();
+    let file_owner_gid = metadata.gid();
 
-    if file_uid == user.uid {
+    if file_owner_uid == local_identity.uid {
         let mask = PosixFileClass::Owner.get_mode_bitmask(requested_permissions);
         if mode_bits & mask == mask {
             return true;
         }
     }
 
-    if user.gids.contains(&file_gid) {
+    if local_identity.gids.contains(&file_owner_gid) {
         let mask = PosixFileClass::Group.get_mode_bitmask(requested_permissions);
         if mode_bits & mask == mask {
             return true;
