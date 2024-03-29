@@ -57,7 +57,7 @@ impl PosixPolicy {
     /// 
     /// The returned identity is used for file permission checks. For more about this permissions check see
     /// [`validate_dataset_permissions`].
-    fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixLocalIdentity, PolicyError> {
+    fn get_local_identity(&self, location: &str, workflow_user: &str) -> Result<&PosixLocalIdentity, PolicyError> {
         self.datasets
             .get(location)
             .ok_or_else(|| PolicyError::MissingLocation(location.to_owned()))?
@@ -228,8 +228,8 @@ fn validate_dataset_permissions(
             Either::Right(dataset.access.values().map(move |kind| match kind {
                 specifications::data::AccessKind::File { path } => {
                     info!("Contents of the DataInfo object:\n{:#?}", dataset);
-                    let user = policy.get_local_name(&location, &workflow.user.name).map_err(|e| ValidationError::PolicyError(e))?;
-                    let result = satisfies_posix_permissions(&path, user, &permission);
+                    let local_identity = policy.get_local_identity(&location, &workflow.user.name).map_err(|e| ValidationError::PolicyError(e))?;
+                    let result = satisfies_posix_permissions(&path, local_identity, &permission);
                     return Ok((dataset.name.clone(), path, result));
                 },
             }))
