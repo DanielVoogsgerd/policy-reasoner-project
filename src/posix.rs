@@ -89,6 +89,16 @@ enum PolicyError {
 }
 
 impl PosixPolicy {
+    /// Extracts and parses a [`PosixPolicy`] from a generic [`Policy`] object. Expects the policy to be specified and expects
+    /// it to adhere to the [`PosixPolicy`] YAML structure. See [`PosixPolicy`].
+    fn from_policy(policy: Policy) -> Self {
+        let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
+        let content_str = policy_content.content.get().trim();
+        PosixPolicy { 
+            datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") 
+        }
+    }
+
     /// Given a location (e.g., `st_antonius_ect`) and the workflow user's name (e.g., `test`), returns the
     /// [`PosixLocalIdentity`] for that user.
     /// 
@@ -258,15 +268,6 @@ fn validate_dataset_permissions(
     }
 }
 
-/// Extracts and parses a [`PosixPolicy`] from a generic policy object. Expects the policy to be specified and expects
-/// it to adhere to the [`PosixPolicy`] YAML structure. See [`PosixPolicy`].
-fn extract_policy(policy: Policy) -> PosixPolicy {
-    let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
-    let content_str = policy_content.content.get().trim();
-    let posix_policy: PosixPolicy = PosixPolicy { datasets: serde_json::from_str(content_str).expect("Failed to parse PosixPolicy") };
-    posix_policy
-}
-
 /***** LIBRARY *****/
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<L> for PosixReasonerConnector {
@@ -278,7 +279,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         workflow: Workflow,
         _task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let posix_policy = extract_policy(policy);
+        let posix_policy = PosixPolicy::from_policy(policy);
         match validate_dataset_permissions(&workflow, &self.data_index, &posix_policy) {
             Ok(ValidationOutput::Ok) => Ok(ReasonerResponse::new(true, vec![])),
             Ok(ValidationOutput::Fail(datasets)) => Ok(ReasonerResponse::new(
@@ -298,7 +299,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _data: String,
         _task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let posix_policy = extract_policy(policy);
+        let posix_policy = PosixPolicy::from_policy(policy);
         match validate_dataset_permissions(&workflow, &self.data_index, &posix_policy) {
             Ok(ValidationOutput::Ok) => Ok(ReasonerResponse::new(true, vec![])),
             Ok(ValidationOutput::Fail(datasets)) => Ok(ReasonerResponse::new(
@@ -316,7 +317,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _state: State,
         workflow: Workflow,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
-        let posix_policy = extract_policy(policy);
+        let posix_policy = PosixPolicy::from_policy(policy);
         match validate_dataset_permissions(&workflow, &self.data_index, &posix_policy) {
             Ok(ValidationOutput::Ok) => Ok(ReasonerResponse::new(true, vec![])),
             Ok(ValidationOutput::Fail(datasets)) => Ok(ReasonerResponse::new(
