@@ -103,13 +103,7 @@ async fn main() {
     let args: Arguments = Arguments::parse();
 
     let data_index = brane_shr::utilities::create_data_index_from("tests/data");
-    let rconn = match PosixReasonerConnectorPlugin::new(args.clone().reasoner_connector.unwrap_or_else(String::new), data_index) {
-        Ok(rconn) => rconn,
-        Err(err) => {
-            error!("{}", err);
-            std::process::exit(1);
-        },
-    };
+    let rconn = PosixReasonerConnectorPlugin::new(data_index);
 
     // Setup a logger
     if let Err(err) = HumanLogger::terminal(if args.trace { DebugMode::Full } else { DebugMode::Debug }).init() {
