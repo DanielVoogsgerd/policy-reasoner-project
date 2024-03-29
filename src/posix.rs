@@ -69,25 +69,25 @@ impl PosixPolicy {
 }
 
 #[derive(Copy, Clone, Deserialize)]
-enum UserType {
+enum PosixFileClass {
     Owner,
     Group,
     Others,
 }
 
 #[derive(Debug, Copy, Clone)]
-enum PosixPermission {
+enum PosixFilePermission {
     Read,
     Write,
     Execute,
 }
 
-impl PosixPermission {
+impl PosixFilePermission {
     fn to_mode_bit(&self) -> u32 {
         match self {
-            PosixPermission::Read => 4,
-            PosixPermission::Write => 2,
-            PosixPermission::Execute => 1,
+            PosixFilePermission::Read => 4,
+            PosixFilePermission::Write => 2,
+            PosixFilePermission::Execute => 1,
         }
     }
 }
@@ -105,15 +105,15 @@ impl PosixPermission {
 // -r-xr-xr-x   0555          read & execute
 // -rw-rw-rw-   0666          read & write
 // -rwxr-----   0740          owner can read, write, & execute; group can only read; others have no permissions
-impl UserType {
+impl PosixFileClass {
     /// Called on a `PosixPermission` and passed a `user_type` will return the numeric notation that denotes being in
     /// possession of this permission for this user_type/triad. E.g., `Read` for `file_owner` maps to `400`, `Execute`
     /// for `others` maps to `001`.
-    fn get_mode_bitmask(&self, required_permissions: &[PosixPermission]) -> u32 {
+    fn get_mode_bitmask(&self, required_permissions: &[PosixFilePermission]) -> u32 {
         let alignment_multiplier = match self {
-            UserType::Owner => 0o100,
-            UserType::Group => 0o10,
-            UserType::Others => 0o1,
+            PosixFileClass::Owner => 0o100,
+            PosixFileClass::Group => 0o10,
+            PosixFileClass::Others => 0o1,
         };
         required_permissions.iter().fold(0, |acc, f| acc | acc | (alignment_multiplier * f.to_mode_bit()))
     }
@@ -129,7 +129,7 @@ impl PosixReasonerConnector {
 }
 
 /// Verifies whether the passed users has the requested permissions on a particular file
-fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, requested_permissions: &[PosixPermission]) -> bool {
+fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, requested_permissions: &[PosixFilePermission]) -> bool {
     let metadata = std::fs::metadata(&path).expect("Could not get file metadata");
 
     let mode_bits = metadata.permissions().mode();
@@ -137,20 +137,20 @@ fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, request
     let file_gid = metadata.gid();
 
     if file_uid == user.uid {
-        let mask = UserType::Owner.get_mode_bitmask(requested_permissions);
+        let mask = PosixFileClass::Owner.get_mode_bitmask(requested_permissions);
         if mode_bits & mask == mask {
             return true;
         }
     }
 
     if user.gids.contains(&file_gid) {
-        let mask = UserType::Group.get_mode_bitmask(requested_permissions);
+        let mask = PosixFileClass::Group.get_mode_bitmask(requested_permissions);
         if mode_bits & mask == mask {
             return true;
         }
     }
 
-    let mask = UserType::Others.get_mode_bitmask(requested_permissions);
+    let mask = PosixFileClass::Others.get_mode_bitmask(requested_permissions);
     mode_bits & mask == mask
 }
 
@@ -178,9 +178,9 @@ fn validate_dataset_permissions(
     let datasets = find_datasets_in_workflow(&workflow);
 
     let (forbidden, errors): (Vec<_>, Vec<_>) = std::iter::empty()
-        .chain(datasets.read_sets.iter().zip(repeat(vec![PosixPermission::Read])))
-        .chain(datasets.write_sets.iter().zip(repeat(vec![PosixPermission::Write])))
-        .chain(datasets.execute_sets.iter().zip(repeat(vec![PosixPermission::Read, PosixPermission::Execute])))
+        .chain(datasets.read_sets.iter().zip(repeat(vec![PosixFilePermission::Read])))
+        .chain(datasets.write_sets.iter().zip(repeat(vec![PosixFilePermission::Write])))
+        .chain(datasets.execute_sets.iter().zip(repeat(vec![PosixFilePermission::Read, PosixFilePermission::Execute])))
         .flat_map(|((location, dataset), permission)| {
             let Some(dataset) = data_index.get(&dataset.name) else {
                 return Either::Left(std::iter::once(Err(ValidationError::UnknownDataset(dataset.name.clone()))));
