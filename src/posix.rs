@@ -25,30 +25,58 @@ use state_resolver::State;
 use workflow::utils::{walk_workflow_preorder, WorkflowVisitor};
 use workflow::{spec::Workflow, Dataset};
 
-/// This location is an assumption right now, and is needed as long as the location is not passed
-/// to the workflow validator
+/// This location is an assumption right now, and is needed as long as the location is not passed to the workflow
+/// validator.
 static ASSUMED_LOCATION: &str = "surf";
 
 /***** LIBRARY *****/
 pub struct PosixReasonerConnector {
     data_index: DataIndex,
 }
+/// E.g., `st_antonius_etc`.
 type LocationIdentifier = String;
+/// The global username as defined in [`Workflow.user`].
 type GlobalUsername = String;
 
+/// The POSIX reasoner's policy. See the `posix-policy.yml` file for an example.
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
     datasets: HashMap<LocationIdentifier, PosixPolicyLocation>,
 }
 
+/// Part of the [`PosixPolicy`]. Represents a location (e.g., `st_antonius_etc`) and contains the global workflow
+/// username to local identity mappings for this location.
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicyLocation {
     user_map: HashMap<GlobalUsername, PosixUser>,
 }
 
+/// The local identity defines a user id and a list of group ids. The local identity is used on the machine where a
+/// dataset resides, to check the local file permissions. For more about this permissions check see
+/// [`validate_dataset_permissions`].
+/// 
+/// This identity is retrieved/parsed from the Posix policy file. A global username in the policy maps to a local
+/// identity.
+///
+/// Example, given the Posix policy file below, then for the `st_antonius_ect` location, the `test` global username maps
+/// to a local identity that contains the uid and gids.
+/// ``` yaml
+///  # file: posix-policy.yml
+///  content:
+///    st_antonius_ect:
+///      user_map:
+///        test:
+///          uid: 1000
+///          gids:
+///            - 1001
+///            - 1002
+///            - 1003
+/// ```
 #[derive(Deserialize, Debug)]
 struct PosixUser {
+    /// The user identifier of a Linux user.
     uid: u32,
+    /// A list of Linux group identifiers.
     gids: Vec<u32>,
 }
 
@@ -61,8 +89,11 @@ enum PolicyError {
 }
 
 impl PosixPolicy {
-    /// Given a dataset identifier (e.g., "umc_utrecht_ect") and a global username (e.g., "test"), returns the local
-    /// triad (file_owner, group, or others) that this combination maps to.
+    /// Given a location (e.g., `st_antonius_ect`) and the workflow user's name (e.g., `test`), returns the
+    /// [`PosixLocalIdentity`] for that user.
+    /// 
+    /// The returned identity is used for file permission checks. For more about this permissions check see
+    /// [`validate_dataset_permissions`].
     fn get_local_name(&self, location: &str, workflow_user: &str) -> Result<&PosixUser, PolicyError> {
         self.datasets
             .get(location)
@@ -73,6 +104,8 @@ impl PosixPolicy {
     }
 }
 
+/// Represents a POSIX file class, also known as a scope. See:
+/// <https://en.wikipedia.org/wiki/File-system_permissions#Classes>.
 #[derive(Copy, Clone, Deserialize)]
 enum PosixFileClass {
     Owner,
@@ -80,6 +113,7 @@ enum PosixFileClass {
     Others,
 }
 
+/// Represents a POSIX file permission. See: <https://en.wikipedia.org/wiki/File-system_permissions#Permissions>.
 #[derive(Debug, Copy, Clone)]
 enum PosixFilePermission {
     Read,
@@ -88,6 +122,15 @@ enum PosixFilePermission {
 }
 
 impl PosixFilePermission {
+    /// Returns this permission's mode bit.
+    /// - `Read` → `4`
+    /// - `Write` → `2`
+    /// - `Execute` → `1`.
+    ///
+    /// For more about POSIX permission bits see:
+    /// <https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation>.
+    ///
+    /// Also see the related [`UserType::get_mode_bitmask`].
     fn to_mode_bit(&self) -> u32 {
         match self {
             PosixFilePermission::Read => 4,
@@ -97,23 +140,12 @@ impl PosixFilePermission {
     }
 }
 
-// Unix permissions (see: https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation)
-// Symbolic     Numeric       English
-// ----------   0000          no permissions
-// -rwx------   0700          read, write, & execute only for owner
-// -rwxrwx---   0770          read, write, & execute for owner and group
-// -rwxrwxrwx   0777          read, write, & execute for owner, group and others
-// ---x--x--x   0111          execute
-// --w--w--w-   0222          write
-// --wx-wx-wx   0333          write & execute
-// -r--r--r--   0444          read
-// -r-xr-xr-x   0555          read & execute
-// -rw-rw-rw-   0666          read & write
-// -rwxr-----   0740          owner can read, write, & execute; group can only read; others have no permissions
 impl PosixFileClass {
-    /// Called on a `PosixPermission` and passed a `user_type` will return the numeric notation that denotes being in
-    /// possession of this permission for this user_type/triad. E.g., `Read` for `file_owner` maps to `400`, `Execute`
-    /// for `others` maps to `001`.
+    /// Given a list of [`PosixFilePermission`]s will return an octal mode bitmask for this [`PosixFileClass`].
+    /// 
+    /// This bitmask represents what mode bits should be set on a file such that this class (e.g., `Owner`) satisfies
+    /// the permissions (e.g, `Read`, `Write`). In this case it would be `0o400` (Read for Owner) and `0o200` (Write for
+    /// Owner), which sums to the returned `0o600` (Read and Write for Owner).
     fn get_mode_bitmask(&self, required_permissions: &[PosixFilePermission]) -> u32 {
         let alignment_multiplier = match self {
             PosixFileClass::Owner => 0o100,
@@ -133,6 +165,9 @@ impl PosixReasonerConnector {
     }
 }
 
+/// Verifies whether the passed [`PosixLocalIdentity`] has all of the requested permissions (e.g., `Read` and `Write`)
+/// on a particular file (defined by the `path`). The identity's user id and group ids are checked against the file
+/// owner's user id and group id respectively. Additionally, the `Others` class permissions are also checked.
 /// Verifies whether the passed users has the requested permissions on a particular file
 fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, requested_permissions: &[PosixFilePermission]) -> bool {
     let metadata = std::fs::metadata(&path).expect("Could not get file metadata");
@@ -161,7 +196,8 @@ fn satisfies_posix_permissions(path: impl AsRef<Path>, user: &PosixUser, request
 
 enum ValidationOutput {
     Ok,
-    // The string here represents a Dataset.name, we might want to encapsulate the Dataset itself
+    // Below we might want to encapsulate the Dataset itself.
+    /// The string here represents a `Dataset.name`.
     Fail(Vec<String>),
 }
 
@@ -173,13 +209,15 @@ enum ValidationError {
     UnknownDataset(String),
 }
 
-/// Check if all the data accesses in the workflow are done on behalf of users with the required permissions
+/// Check if all the data accesses performed in the `workflow` are done on behalf of users that have the required
+/// permissions. If not all permissions are met, then [`ValidationError`]s are returned. These errors contain more
+/// information about the problems that occurred during validation.
 fn validate_dataset_permissions(
     workflow: &Workflow,
     data_index: &DataIndex,
     policy: &PosixPolicy,
 ) -> Result<ValidationOutput, Vec<ValidationError>> {
-    // The datasets used in the workflow. E.g., "st_antonius_ect".
+    // The datasets used in the workflow. E.g., `st_antonius_ect`.
     let datasets = find_datasets_in_workflow(&workflow);
 
     let (forbidden, errors): (Vec<_>, Vec<_>) = std::iter::empty()
@@ -199,8 +237,8 @@ fn validate_dataset_permissions(
                 },
             }))
         })
-        // From where we are gonna focus on the problems that occurred in the validation
-        // These can be seperated into groups: Errors (e.g. Non-existing users / files), and
+        // This is where we are going to focus on the problems that occurred in the validation
+        // These can be separated into groups: Errors (e.g. Non-existing users / files), and
         // validation failures.
         .filter(|res| match res {
             // Filter out what was okay in either sense.
@@ -221,7 +259,8 @@ fn validate_dataset_permissions(
     }
 }
 
-//Function that extracts the posix policy from the policy object
+/// Extracts and parses a [`PosixPolicy`] from a generic policy object. Expects the policy to be specified and expects
+/// it to adhere to the [`PosixPolicy`] YAML structure. See [`PosixPolicy`].
 fn extract_policy(policy: Policy) -> PosixPolicy {
     let policy_content: PolicyContent = policy.content.get(0).expect("Failed to parse PolicyContent").clone();
     let content_str = policy_content.content.get().trim();
