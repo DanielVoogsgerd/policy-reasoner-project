@@ -35,10 +35,10 @@ pub struct PosixReasonerConnector {
 }
 /// E.g., `st_antonius_etc`.
 type LocationIdentifier = String;
-/// The global username as defined in [`Workflow.user`].
+/// The global username as defined in [`Workflow.user`]. E.g., `test`.
 type GlobalUsername = String;
 
-/// The POSIX reasoner's policy. See the `posix-policy.yml` file for an example.
+/// The overarching POSIX policy. Check out the module documentation for an overview.
 #[derive(Deserialize, Debug)]
 pub struct PosixPolicy {
     datasets: HashMap<LocationIdentifier, PosixPolicyLocation>,
@@ -51,12 +51,12 @@ pub struct PosixPolicyLocation {
     user_map: HashMap<GlobalUsername, PosixLocalIdentity>,
 }
 
-/// The local identity defines a user id and a list of group ids. The local identity is used on the machine where a
-/// dataset resides, to check the local file permissions. For more about this permissions check see
+/// The local identity defines a user id and a list of group ids. The local identity is used on the machine on which a
+/// dataset resides to check the local file permissions. For more about this permissions check see
 /// [`validate_dataset_permissions`].
 /// 
-/// This identity is retrieved/parsed from the Posix policy file. A global username in the policy maps to a local
-/// identity.
+/// This identity is defined in the Posix policy file. Global usernames in the Posix policy map to these local
+/// identities.
 ///
 /// Example, given the Posix policy file below, then for the `st_antonius_ect` location, the `test` global username maps
 /// to a local identity that contains the uid and gids.
