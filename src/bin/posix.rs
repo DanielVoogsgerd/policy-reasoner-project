@@ -99,6 +99,10 @@ type StateResolverPlugin = state::FileStateResolver;
 /***** ENTRYPOINT *****/
 #[tokio::main]
 async fn main() {
+    if dotenvy::dotenv().is_err() {
+        eprintln!("Could not load or find .env file. Assuming all necessary environment variables are set");
+    }
+
     // Parse arguments
     let args: Arguments = Arguments::parse();
 
