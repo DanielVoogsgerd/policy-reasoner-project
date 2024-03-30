@@ -1,3 +1,5 @@
 target
 data
 !data/.gitkeep
+# MacOS
+.DS_Store

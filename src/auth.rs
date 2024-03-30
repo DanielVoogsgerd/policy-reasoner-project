@@ -34,6 +34,9 @@ impl KeyResolver for KidResolver {
         let kid = header.kid.as_ref().ok_or_else(|| AuthResolverError::new("No kid present in header".into()))?;
 
         // Get the key
+        info!("Resolving key for kid: {}", kid);
+        debug!("Keys in store: {:?}", self.jwk_store.keys);
+
         let key: &Jwk = match self.jwk_store.find(&kid) {
             Some(key) => key,
             None => return Err(AuthResolverError::new(format!("Could not find key for kid: {}", kid))),

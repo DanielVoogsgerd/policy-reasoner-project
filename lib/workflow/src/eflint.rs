@@ -556,4 +556,9 @@ impl Workflow {
         // Done!
         phrases
     }
+    //Submit a workflow -> Posix representation
+
+    // pub fn to_bla(&self) -> Vec<Posix> {
+
+    // }
 }

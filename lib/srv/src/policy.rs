@@ -256,6 +256,9 @@ where
 
     fn with_policy_api_auth(this: Arc<Self>) -> impl Filter<Extract = (AuthContext,), Error = warp::Rejection> + Clone {
         Self::with_self(this.clone()).and(warp::header::headers_cloned()).and_then(|this: Arc<Self>, headers| async move {
+            println!("Headers: {:?}", headers);
+            println!("Authenticating");
+
             match this.pauthresolver.authenticate(headers).await {
                 Ok(v) => Ok(v),
                 Err(err) => Err(warp::reject::custom(err)),

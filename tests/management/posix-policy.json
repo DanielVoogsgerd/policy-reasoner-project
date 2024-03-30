@@ -1,0 +1,49 @@
+{
+  "description": "This file contains the policy for various st_antonius_ect datasets.",
+  "version": "0.1.0",
+  "version_description": "The policy is used to define the users and groups that have access to the dataset.",
+  "content": [
+    {
+      "reasoner": "posix",
+      "reasoner_version": "0.0.1",
+      "content": {
+        "surf": {
+          "user_map": {
+            "test": {
+              "uid": 1000,
+              "gids": [
+                1001,
+                1002,
+                1003
+              ]
+            },
+            "halli": {
+              "uid": 1001,
+              "gids": [
+                1001
+              ]
+            }
+          }
+        },
+        "umc_utrecht_ect": {
+          "user_map": {
+            "test": {
+              "uid": 1000,
+              "gids": [
+                1001,
+                1002,
+                1003
+              ]
+            },
+            "halli": {
+              "uid": 1001,
+              "gids": [
+                1001
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
