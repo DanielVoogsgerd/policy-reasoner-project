@@ -45,7 +45,14 @@
 //!
 //! ### Current permission model
 //!
-//! TODO: write something how we determine if a file can be used
+//! The current permission model is based on the POSIX file permissions. This means that we check if the user has the
+//! required permissions on the file. This is done by checking the file permissions of the file itself, and checking if
+//! the user is either the owner of the file, in the group of the file, or if the file is world readable. The uid and
+//! the gids extracted from the policy are matched against the file's uid and gid. If the file is owned by the user, the
+//! owner permissions are checked. If the file is owned by a group the user is in, the group permissions are checked. If
+//! neither of these is true, the other permissions are checked. If the user has the required permissions, the request is
+//! approved. If not, the request is denied : [satisfies_posix_permissions].
+//!
 //!
 //! # State of the implementation
 //!
