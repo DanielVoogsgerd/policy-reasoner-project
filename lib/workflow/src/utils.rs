@@ -43,12 +43,12 @@ pub trait WorkflowVisitor {
     fn visit_commit(&mut self, _commit: &ElemCommit){}
     fn visit_branch(&mut self, _branch: &ElemBranch){}
     fn visit_parallel(&mut self, _parallel: &ElemParallel){}
-    fn visit_loop(&mut self, _loope: &ElemLoop){}
+    fn visit_loop(&mut self, _loop: &ElemLoop){}
     fn visit_next(&mut self){}
     fn visit_stop(&mut self, _stop: &HashSet<Dataset>){}
 }
 
-/// A walker that calls visits all [`Elem`]s in preorder
+/// A walker that visits all [`Elem`]s in preorder
 pub fn walk_workflow_preorder(elem: &Elem, visitor: &mut impl WorkflowVisitor) {
     match elem {
         Elem::Task(task) => {
@@ -56,7 +56,6 @@ pub fn walk_workflow_preorder(elem: &Elem, visitor: &mut impl WorkflowVisitor) {
             walk_workflow_preorder(&task.next, visitor);
         },
         Elem::Commit(commit) => {
-            visitor.visit_commit(commit);
             visitor.visit_commit(commit);
             walk_workflow_preorder(&commit.next, visitor);
         },
@@ -76,10 +75,10 @@ pub fn walk_workflow_preorder(elem: &Elem, visitor: &mut impl WorkflowVisitor) {
 
             walk_workflow_preorder(&parallel.next, visitor);
         },
-        Elem::Loop(loope) => {
-            visitor.visit_loop(loope);
-            walk_workflow_preorder(&loope.body, visitor);
-            walk_workflow_preorder(&loope.next, visitor);
+        Elem::Loop(r#loop) => {
+            visitor.visit_loop(r#loop);
+            walk_workflow_preorder(&r#loop.body, visitor);
+            walk_workflow_preorder(&r#loop.next, visitor);
         },
         Elem::Next => {
             visitor.visit_next();
