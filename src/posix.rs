@@ -182,6 +182,8 @@ impl PosixPolicy {
     }
 }
 
+/// Represents an error that occurred during the validation of a policy. These errors contain more information about the
+/// problems that occurred during validation.
 #[derive(thiserror::Error, Debug)]
 enum PolicyError {
     #[error("Missing location: {0}")]
@@ -313,6 +315,8 @@ enum ValidationOutput {
     Fail(Vec<String>),
 }
 
+/// Represents a validation error that occurred during the validation of a workflow. These errors contain more
+/// information about the problems that occurred during validation.
 #[derive(thiserror::Error, Debug)]
 enum ValidationError {
     #[error("Policy Error: {0}")]
@@ -332,7 +336,6 @@ fn validate_dataset_permissions(
     // The datasets used in the workflow. E.g., `st_antonius_ect`.
     let datasets = find_datasets_in_workflow(&workflow);
 
-    // The datasets that are forbidden to access
     let (forbidden, errors): (Vec<_>, Vec<_>) = std::iter::empty()
         .chain(datasets.read_sets.iter().zip(repeat(vec![PosixFilePermission::Read])))
         .chain(datasets.write_sets.iter().zip(repeat(vec![PosixFilePermission::Write])))
