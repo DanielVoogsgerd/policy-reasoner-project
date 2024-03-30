@@ -21,6 +21,8 @@ impl NoOpReasonerConnector {
       Default::default()
   }
 }
+
+/***** LIBRARY *****/
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<L>
     for NoOpReasonerConnector
@@ -63,6 +65,9 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         return Ok(ReasonerResponse::new(true, vec![]));
     }
 }
+
+/// The context for the no-operation reasoner connector.
+/// See the [`ConnectorContext`] and [`ConnectorWithContext`] traits for more information.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NoOpReasonerConnectorContext {
     #[serde(rename = "type")]
