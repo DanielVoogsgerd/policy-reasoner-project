@@ -42,8 +42,8 @@ nested-cli-parser = { path = "lib/nested-cli-parser" }
 brane-cfg = { git = "https://github.com/epi-project/brane", branch = "develop", optional = true }
 # specifications = { path = "../brane/specifications" }
 # brane-shr = { path = "../brane/brane-shr" }
-specifications = { git = "https://github.com/danielvoogsgerd/brane" }
-brane-shr = { git = "https://github.com/danielvoogsgerd/brane" }
+specifications = { git = "https://github.com/danielvoogsgerd/brane", branch = "develop"}
+brane-shr = { git = "https://github.com/danielvoogsgerd/brane", branch = "develop" }
 uuid = { version = "1.7", features = ["serde", "v4"], optional = true }
 thiserror = "1.0.58"
 itertools = "0.12.1"
