@@ -190,7 +190,7 @@ curl -X PUT -H "Authorization: Bearer $JWT_EXPERT" -H "Content-Type: application
 ### POSIX policy
 Alternatively, a POSIX based policy can be used, which can be generated using the `posix-policy.yaml` file. See the
 `POSIX reasoner` section under `System administrators` in the Brane [user
-guide](https://wiki.enablingpersonalizedinterventions.nl/user-guide/).
+guide](https://wiki.enablingpersonalizedinterventions.nl/user-guide/). Also check out the `posix.rs` module documentation using `cargo doc --document-private-items --open`.
 
 ```bash
 # Generate the json file from the posix-policy-yaml file via the command (yq can be installed via brew or apt)
