@@ -1,6 +1,8 @@
-//! A policy reasoner implementation that does as little as possible to do as little as possible
+//! A minimal policy reasoner implementation that can be used as a base for new policy reasoners.
 //!
-//! This reasoner will always respond that a request is valid
+//! This no-operation reasoner is meant to be an example, and can be used as a base to build new reasoners on top of.
+//! Furthermore it can be used for testing. The reasoner approves all workflow validation requests by default (it does
+//! not perform any permission checks, and thus never rejects a request).
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
 
 use log::debug;
@@ -9,6 +11,8 @@ use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use state_resolver::State;
 use workflow::spec::Workflow;
 
+/// The minimal no-operation reasoner connector, that approves all validation requests by default (it does not check any
+/// policy/permissions).
 #[derive(Default)]
 pub struct NoOpReasonerConnector;
 
