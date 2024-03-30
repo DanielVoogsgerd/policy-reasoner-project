@@ -8,7 +8,7 @@
 //! - POSIX reasoner:
 //!   A simple reasoner based on POSIX file permissions
 //! - No-Op reasoner:
-//!   A very simple base implementation that focusses on being as minimal as possible
+//!   A very simple base implementation that focuses on being as minimal as possible
 
 pub mod auth;
 pub mod logger;
