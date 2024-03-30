@@ -187,6 +187,9 @@ impl ReasonerConnectorAuditLogger for MockLogger {
 /// Note that this logger is not exactly the perfect audit log, as it does nothing w.r.t. ensuring that the file is the same as last time or signing changes or w/e.
 #[derive(Clone)]
 pub struct FileLogger {
+    /// The name of the binary, is static for the lifetime of the binary
+    binary_name: &'static str,
+
     /// The path of the file to log to.
     path: PathBuf,
 }
@@ -199,7 +202,7 @@ impl FileLogger {
     /// # Returns
     /// A new instance of self, ready for action.
     #[inline]
-    pub fn new(path: impl Into<PathBuf>) -> Self { Self { path: path.into() } }
+    pub fn new(binary_name: &'static str, path: impl Into<PathBuf>) -> Self { Self { binary_name, path: path.into() } }
 
     /// Writes a log statement to the logging file.
     ///
@@ -234,7 +237,10 @@ impl FileLogger {
         // Write the message
         debug!("Writing {}-statement to logfile...", stmt.variant());
         // Write who wrote it
-        write_file!(self.path.clone(), &mut handle, concat!("[", env!("CARGO_BIN_NAME"), " v", env!("CARGO_PKG_VERSION"), "]")).await?;
+        write_file!(self.path.clone(), &mut handle, "[{binary_name} v{version}]",
+            binary_name=self.binary_name,
+            version=env!("CARGO_PKG_VERSION")
+        ).await?;
         // Print the timestamp
         write_file!(self.path.clone(), &mut handle, "[{}]", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")).await?;
         // Then write the logged message

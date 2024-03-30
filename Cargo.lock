@@ -587,33 +587,6 @@ dependencies = [
 [[package]]
 name = "brane-shr"
 version = "3.0.0"
-dependencies = [
- "async-compression",
- "console",
- "dialoguer 0.10.4",
- "enum-debug",
- "fs2",
- "futures-util",
- "hex",
- "humanlog",
- "indicatif",
- "log",
- "num-derive",
- "num-traits",
- "rdkafka",
- "regex",
- "reqwest",
- "sha2",
- "specifications 3.0.0",
- "tokio",
- "tokio-stream",
- "tokio-tar",
- "url",
-]
-
-[[package]]
-name = "brane-shr"
-version = "3.0.0"
 source = "git+https://github.com/epi-project/brane?branch=develop#ccebb81369fa3a5887bea2ca6075f29ab9fa7dfd"
 dependencies = [
  "async-compression",
@@ -633,6 +606,34 @@ dependencies = [
  "reqwest",
  "sha2",
  "specifications 3.0.0 (git+https://github.com/epi-project/brane?branch=develop)",
+ "tokio",
+ "tokio-stream",
+ "tokio-tar",
+ "url",
+]
+
+[[package]]
+name = "brane-shr"
+version = "3.0.0"
+source = "git+https://github.com/danielvoogsgerd/brane#c449568e79ecebcb03e0884e8d4f5496633f2f6f"
+dependencies = [
+ "async-compression",
+ "console",
+ "dialoguer 0.10.4",
+ "enum-debug",
+ "fs2",
+ "futures-util",
+ "hex",
+ "humanlog",
+ "indicatif",
+ "log",
+ "num-derive",
+ "num-traits",
+ "rdkafka",
+ "regex",
+ "reqwest",
+ "sha2",
+ "specifications 3.0.0 (git+https://github.com/danielvoogsgerd/brane)",
  "tokio",
  "tokio-stream",
  "tokio-tar",
@@ -1914,6 +1915,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2499,7 +2509,7 @@ dependencies = [
  "base16ct",
  "base64ct",
  "brane-cfg",
- "brane-shr 3.0.0",
+ "brane-shr 3.0.0 (git+https://github.com/danielvoogsgerd/brane)",
  "chrono",
  "clap 4.5.2",
  "deliberation 0.1.0",
@@ -2512,6 +2522,7 @@ dependencies = [
  "error-trace",
  "graphql_client",
  "humanlog",
+ "itertools 0.12.1",
  "jsonwebtoken",
  "log",
  "nested-cli-parser",
@@ -2522,9 +2533,10 @@ dependencies = [
  "serde_json",
  "serde_yaml 0.9.32",
  "sha2",
- "specifications 3.0.0",
+ "specifications 3.0.0 (git+https://github.com/danielvoogsgerd/brane)",
  "srv 0.1.0",
  "state-resolver 0.1.0",
+ "thiserror",
  "tokio",
  "uuid 1.7.0",
  "warp",
@@ -3353,35 +3365,6 @@ dependencies = [
 [[package]]
 name = "specifications"
 version = "3.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.21.7",
- "chrono",
- "const_format",
- "enum-debug",
- "log",
- "num-traits",
- "parking_lot",
- "prost 0.11.9",
- "prost-types 0.11.9",
- "reqwest",
- "semver",
- "serde",
- "serde_json",
- "serde_repr",
- "serde_test",
- "serde_with 3.7.0",
- "serde_yaml 0.9.32",
- "strum 0.24.1",
- "strum_macros 0.24.3",
- "tonic 0.9.2",
- "uuid 0.8.2",
-]
-
-[[package]]
-name = "specifications"
-version = "3.0.0"
 source = "git+https://github.com/epi-project/brane?branch=develop#ccebb81369fa3a5887bea2ca6075f29ab9fa7dfd"
 dependencies = [
  "anyhow",
@@ -3410,6 +3393,36 @@ dependencies = [
  "strum_macros 0.24.3",
  "tonic 0.11.0",
  "uuid 1.7.0",
+]
+
+[[package]]
+name = "specifications"
+version = "3.0.0"
+source = "git+https://github.com/danielvoogsgerd/brane#c449568e79ecebcb03e0884e8d4f5496633f2f6f"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "const_format",
+ "enum-debug",
+ "log",
+ "num-traits",
+ "parking_lot",
+ "prost 0.11.9",
+ "prost-types 0.11.9",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "serde_test",
+ "serde_with 3.7.0",
+ "serde_yaml 0.9.32",
+ "strum 0.24.1",
+ "strum_macros 0.24.3",
+ "tonic 0.9.2",
+ "uuid 0.8.2",
 ]
 
 [[package]]

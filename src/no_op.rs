@@ -1,40 +1,21 @@
-
-use std::error;
-
-
+//! A policy reasoner implementation that does as little as possible to do as little as possible
+//!
+//! This reasoner will always respond that a request is valid
 use audit_logger::{ConnectorContext, ConnectorWithContext, ReasonerConnectorAuditLogger, SessionedConnectorAuditLogger};
 
-
-use log::{debug, info};
-use nested_cli_parser::map_parser::MapParser;
-use nested_cli_parser::{NestedCliParser as _, NestedCliParserHelpFormatter};
-use policy::{Policy};
+use log::debug;
+use policy::Policy;
 use reasonerconn::{ReasonerConnError, ReasonerConnector, ReasonerResponse};
 use state_resolver::State;
 use workflow::spec::Workflow;
 
+#[derive(Default)]
 pub struct NoOpReasonerConnector;
 
 impl NoOpReasonerConnector {
-  pub fn new(_cli_args: String) -> Result<Self, Box<dyn error::Error>> {
-      info!("Creating new NoOpReasonerConnector with {} plugin", std::any::type_name::<Self>());
-
-      debug!("Parsing nested arguments for NoOpReasonerConnector<{}>", std::any::type_name::<Self>());
-
-      Ok(NoOpReasonerConnector {})
+  pub fn new() -> Self {
+      Default::default()
   }
-
-
-  pub fn help<'l>(short: char, long: &'l str) -> NestedCliParserHelpFormatter<'static, 'l, MapParser> {
-      MapParser::new(Self::cli_args()).into_help("NoOpReasonerConnector plugin", short, long)
-  }
-
-  #[inline]
-  fn cli_args() -> Vec<(char, &'static str, &'static str)> {
-      vec![]
-  }
-
-
 }
 #[async_trait::async_trait]
 impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<L>
@@ -48,6 +29,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _workflow: Workflow,
         _task: String,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
+        debug!("NoOpReasonerConnector: Execute task request received");
         return Ok(ReasonerResponse::new(true, vec![]));
     }
 
@@ -60,6 +42,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
         _data: String,
         _task: Option<String>,
     ) -> Result<ReasonerResponse, ReasonerConnError> {
+        debug!("NoOpReasonerConnector: Access data request received");
         return Ok(ReasonerResponse::new(true, vec![]));
     }
 
@@ -77,7 +60,7 @@ impl<L: ReasonerConnectorAuditLogger + Send + Sync + 'static> ReasonerConnector<
     }
 }
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct NoOpReasonerConnectorContext { // TODO: Might want to make this generic or a trait to allow checking the type.
+pub struct NoOpReasonerConnectorContext {
     #[serde(rename = "type")]
     pub t: String,
     pub version: String,
@@ -106,7 +89,7 @@ impl ConnectorWithContext for NoOpReasonerConnector {
     #[inline]
     fn context() -> Self::Context {
         NoOpReasonerConnectorContext {
-            t: "posix".into(),
+            t: "noop".into(),
             version: "0.1.0".into(),
         }
     }
