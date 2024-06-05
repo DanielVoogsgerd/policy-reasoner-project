@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use audit_logger::{AuditLogger, ConnectorContext};
+use audit_logger::AuditLogger;
 use auth_resolver::{AuthContext, AuthResolver};
 use policy::PolicyDataAccess;
 use reasonerconn::ReasonerConnector;

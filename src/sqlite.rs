@@ -1,7 +1,7 @@
 use std::future::Future;
 
 use ::policy::{Context, Policy, PolicyContent, PolicyDataAccess, PolicyDataError, PolicyVersion};
-use chrono::{Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{Utc, DateTime};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
@@ -85,12 +85,12 @@ impl PolicyDataAccess for SqlitePolicyDataStore {
                 }
                 let item = r.remove(0);
                 let content = serde_json::from_str::<Vec<PolicyContent>>(item.content.as_str()).expect("error");
-                let created_at = Local.from_utc_datetime(&NaiveDateTime::from_timestamp_micros(item.created_at).unwrap());
+                let created_at = DateTime::from_timestamp_micros(item.created_at).unwrap();
                 let policy = Policy {
                     description: item.description,
                     version: PolicyVersion {
                         creator: Some(item.creator),
-                        created_at,
+                        created_at: created_at.into(),
                         version: Some(item.version),
                         version_description: item.version_description,
                         reasoner_connector_context: item.reasoner_connector_context,
@@ -187,12 +187,12 @@ impl PolicyDataAccess for SqlitePolicyDataStore {
 
                 let item: SqlitePolicy = r.remove(0);
                 let content = serde_json::from_str::<Vec<PolicyContent>>(item.content.as_str()).expect("error");
-                let created_at = Local.from_utc_datetime(&NaiveDateTime::from_timestamp_micros(item.created_at).unwrap());
+                let created_at = DateTime::from_timestamp_micros(item.created_at).unwrap();
                 let policy = Policy {
                     description: item.description,
                     version: PolicyVersion {
                         creator: Some(item.creator),
-                        created_at,
+                        created_at: created_at.into(),
                         version: Some(item.version),
                         version_description: item.version_description,
                         reasoner_connector_context: item.reasoner_connector_context,
@@ -227,7 +227,7 @@ impl PolicyDataAccess for SqlitePolicyDataStore {
                         version: Some(x.0),
                         version_description: x.1,
                         creator: Some(x.2),
-                        created_at: Local.from_utc_datetime(&NaiveDateTime::from_timestamp_micros(x.3).unwrap()),
+                        created_at: DateTime::from_timestamp_micros(x.3).unwrap().into(),
                         reasoner_connector_context: x.4,
                     })
                     .collect();
