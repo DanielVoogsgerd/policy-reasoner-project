@@ -34,7 +34,7 @@ warp = "0.3"
 jsonwebtoken = "9"
 diesel = { version = "*", features = ["sqlite", "chrono", "r2d2"] }
 chrono = "0.4"
-reqwest = "*"
+reqwest = { version = "*", features = [ "json" ] }
 enum-debug = { git = "https://github.com/Lut99/enum-debug", features = ["derive"] }
 error-trace = { git = "https://github.com/Lut99/error-trace-rs" }
 graphql_client = { version = "0.13", optional = true }
